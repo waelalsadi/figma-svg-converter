@@ -168,6 +168,17 @@ class FigmaSVGConverter {
         let w = this.r(rect.width);
         let h = this.r(rect.height);
 
+        // Clamp to max-width if specified and getBoundingClientRect returned wider
+        const cssMaxWidth = parseFloat(style.maxWidth);
+        if (cssMaxWidth > 0 && w > cssMaxWidth + 1) {
+            const oldW = w;
+            w = this.r(cssMaxWidth);
+            // If centered (margin: auto), adjust x
+            if (style.marginLeft === 'auto' && style.marginRight === 'auto') {
+                x = this.r(x + (oldW - w) / 2);
+            }
+        }
+
         if (w < 0.5 && h < 0.5) {
             const hasKids = Array.from(el.children).some(c => {
                 const cr = c.getBoundingClientRect();
@@ -200,14 +211,13 @@ class FigmaSVGConverter {
 
         // Children sorted by z-index
         const childSVG = this._processChildren(el);
-        const overflow = style.overflow === 'hidden' || style.overflow === 'clip';
-        const hasBR = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
-        if (overflow && hasBR && childSVG.trim()) {
-            const clipId = this._addClip(x, y, w, h, br);
-            content += `<g clip-path="url(#${clipId})">${childSVG}</g>`;
-        } else if (childSVG.trim()) {
-            content += childSVG;
-        }
+            const overflow = style.overflow === 'hidden' || style.overflow === 'clip';
+            if (overflow && childSVG.trim()) {
+                const clipId = this._addClip(x, y, w, h, br);
+                content += `<g clip-path="url(#${clipId})">${childSVG}</g>`;
+            } else if (childSVG.trim()) {
+                content += childSVG;
+            }
 
         if (!content.trim()) return '';
 
@@ -239,43 +249,81 @@ class FigmaSVGConverter {
             if (node.nodeType !== 3) continue;
             const text = node.textContent;
             if (!text.trim()) continue;
-            // This text node is a DIRECT child of el — use el's computed style
             const cs = win.getComputedStyle(el);
             const range = doc.createRange();
             range.selectNodeContents(node);
             const rects = range.getClientRects();
 
+            const fontSize = parseFloat(cs.fontSize) || 16;
+            const fontWeight = cs.fontWeight;
+            const fc = this._formatColor(cs.color);
+            const opAttr = fc.opacity < 1 ? ` opacity="${fc.opacity}"` : '';
+
+            // Font family — keep quotes for multi-word names
+            const fontFamily = cs.fontFamily.split(',').map(f => {
+                const t = f.trim().replace(/['"]/g, '');
+                return t.includes(' ') ? `'${t}'` : t;
+            }).join(', ');
+
+            // Baseline via canvas font metrics
+            const canvas = this._getTextCanvas();
+            const ctx = canvas.getContext('2d');
+            ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+            const metrics = ctx.measureText(text.trim());
+            const ascent = metrics.fontBoundingBoxAscent || metrics.actualBoundingBoxAscent || fontSize * 0.8;
+
+            // RTL and text-align
+            const isRTL = cs.direction === 'rtl';
+            const textAlign = cs.textAlign;
+
             if (rects.length <= 1) {
-                // Simple: one rect = one text element
                 const rr = rects[0];
-                if (rr.width < 0.5 || rr.height < 0.5) continue;
-                const fontSize = parseFloat(cs.fontSize) || 16;
-                const fontFamily = cs.fontFamily.replace(/['"]/g, '');
-                const fontWeight = cs.fontWeight;
-                const direction = cs.direction || 'ltr';
-                const fc = this._formatColor(cs.color);
-
-                const tx = this.r(rr.left - ref.left);
-                const baseline = this.r(rr.top - ref.top + fontSize * 0.88);
-                const opAttr = fc.opacity < 1 ? ` opacity="${fc.opacity}"` : '';
-                svg += `<text x="${tx}" y="${baseline}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}" direction="${direction}"${opAttr}>${this.escHtml(text)}</text>`;
+                if (!rr || rr.width < 0.5 || rr.height < 0.5) continue;
+                const y = this.r(rr.top - ref.top + ascent);
+                let tx, anchor;
+                if (textAlign === 'center') {
+                    tx = this.r(rr.left - ref.left + rr.width / 2);
+                    anchor = 'middle';
+                } else if (textAlign === 'right' || (textAlign === 'start' && isRTL)) {
+                    tx = this.r(rr.right - ref.left);
+                    anchor = 'end';
+                } else if (textAlign === 'left' || (textAlign === 'start' && !isRTL)) {
+                    tx = this.r(rr.left - ref.left);
+                    anchor = 'start';
+                } else if (isRTL) {
+                    tx = this.r(rr.right - ref.left);
+                    anchor = 'end';
+                } else {
+                    tx = this.r(rr.left - ref.left);
+                    anchor = 'start';
+                }
+                svg += `<text x="${tx}" y="${y}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}"${opAttr}>${this.escHtml(text)}</text>`;
             } else {
-                // Multi-rect (bidi text, line wrapping): render as ONE text element at the bounding box
-                // Use the bounding rect of the full range
-                const bRect = range.getBoundingClientRect();
-                const fontSize = parseFloat(cs.fontSize) || 16;
-                const fontFamily = cs.fontFamily.replace(/['"]/g, '');
-                const fontWeight = cs.fontWeight;
-                const direction = cs.direction || 'ltr';
-                const fc = this._formatColor(cs.color);
-
-                const tx = this.r(bRect.left - ref.left);
-                const baseline = this.r(bRect.top - ref.top + fontSize * 0.88);
-                const opAttr = fc.opacity < 1 ? ` opacity="${fc.opacity}"` : '';
-                svg += `<text x="${tx}" y="${baseline}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}" direction="${direction}"${opAttr}>${this.escHtml(text)}</text>`;
+                // Multi-rect: each rect separately (bidi segments or line wrapping)
+                for (let i = 0; i < rects.length; i++) {
+                    const rr = rects[i];
+                    if (rr.width < 0.5 || rr.height < 0.5) continue;
+                    const y = this.r(rr.top - ref.top + ascent);
+                    // For multi-rect, determine anchor per-rect by position
+                    // If rect is on the right side of the element, likely RTL segment
+                    let tx, anchor;
+                    if (isRTL) {
+                        tx = this.r(rr.right - ref.left);
+                        anchor = 'end';
+                    } else {
+                        tx = this.r(rr.left - ref.left);
+                        anchor = 'start';
+                    }
+                    svg += `<text x="${tx}" y="${y}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}"${opAttr}>${this.escHtml(text)}</text>`;
+                }
             }
         }
         return svg;
+    }
+
+    _getTextCanvas() {
+        if (!this._textCanvas) this._textCanvas = document.createElement('canvas');
+        return this._textCanvas;
     }
 
     // ─── Backgrounds ───
