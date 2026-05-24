@@ -299,23 +299,40 @@ class FigmaSVGConverter {
                 }
                 svg += `<text x="${tx}" y="${y}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}"${opAttr}>${this.escHtml(text)}</text>`;
             } else {
-                // Multi-rect: each rect separately (bidi segments or line wrapping)
+                // Multi-rect (line wrapping): split text into lines based on number of rects
+                // Each rect represents one visual line
+                const totalW = Array.from(rects).reduce((s, r) => s + r.width, 0);
+                const charWidth = totalW / Math.max(1, text.length);
+                let tspans = '';
+                let charOffset = 0;
                 for (let i = 0; i < rects.length; i++) {
                     const rr = rects[i];
                     if (rr.width < 0.5 || rr.height < 0.5) continue;
-                    const y = this.r(rr.top - ref.top + ascent);
-                    // For multi-rect, determine anchor per-rect by position
-                    // If rect is on the right side of the element, likely RTL segment
-                    let tx, anchor;
+                    const ly = this.r(rr.top - ref.top + ascent);
+                    // Estimate chars in this line based on rect width
+                    const lineChars = Math.max(1, Math.round(rr.width / Math.max(1, charWidth)));
+                    const lineText = text.substring(charOffset, charOffset + lineChars).trim();
+                    charOffset += lineChars;
+                    let lx;
                     if (isRTL) {
-                        tx = this.r(rr.right - ref.left);
-                        anchor = 'end';
+                        lx = this.r(rr.right - ref.left);
                     } else {
-                        tx = this.r(rr.left - ref.left);
-                        anchor = 'start';
+                        lx = this.r(rr.left - ref.left);
                     }
-                    svg += `<text x="${tx}" y="${y}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}"${opAttr}>${this.escHtml(text)}</text>`;
+                    if (lineText) {
+                        tspans += `<tspan x="${lx}" y="${ly}">${this.escHtml(lineText)}</tspan>`;
+                    }
                 }
+                const firstRR = rects[0];
+                const fy = this.r(firstRR.top - ref.top + ascent);
+                let fx;
+                if (isRTL) {
+                    fx = this.r(firstRR.right - ref.left);
+                } else {
+                    fx = this.r(firstRR.left - ref.left);
+                }
+                const anchor = isRTL ? 'end' : 'start';
+                svg += `<text x="${fx}" y="${fy}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}"${opAttr}>${tspans}</text>`;
             }
         }
         return svg;
