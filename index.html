@@ -195,10 +195,16 @@ class FigmaSVGConverter {
         const isLeaf = this._isLeafElement(el);
 
         if (isLeaf) {
-            // Single background + border + text all in one group
+            // Leaf element: background + border + inline text, NO children processing
             content += this._renderBackgrounds(style, x, y, w, h, br);
             content += this._renderBorder(style, x, y, w, h, br);
             content += this._renderInlineTexts(el, x, y, w, h);
+            // Still render <svg> icons inside
+            const svgs = el.querySelectorAll('svg');
+            for (const s of svgs) {
+                const sr = s.getBoundingClientRect();
+                content += this._renderSVGIcon(s, this.r(sr.left - this._ref.left), this.r(sr.top - this._ref.top), this.r(sr.width), this.r(sr.height), this._win.getComputedStyle(s));
+            }
         } else {
             // Background + border first
             content += this._renderBackgrounds(style, x, y, w, h, br);
@@ -234,16 +240,15 @@ class FigmaSVGConverter {
     }
 
     _isLeafElement(el) {
-        // Element that only contains text nodes (no block children)
         if (el.tagName.toLowerCase() === 'img') return false;
         if (el.tagName.toLowerCase() === 'svg') return false;
+        if (el.tagName.toLowerCase() === 'a') return false; // <a> has child structure
         for (const child of el.children) {
             const tag = child.tagName.toLowerCase();
             if (!['span','a','br','strong','em','b','i','u','small','sub','sup','mark','abbr','code'].includes(tag)) {
                 return false;
             }
         }
-        // Must have some text content
         return el.textContent.trim().length > 0;
     }
 
