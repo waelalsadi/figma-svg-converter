@@ -402,7 +402,7 @@
         // Create a rect or path (for border-radius)
         // ------------------------------------------------------------------
         createRect(x, y, w, h, br, fill, filterAttr = '', clipAttr = '') {
-            if (br.tl === br.tr && br.tr === br.br && br.br === bl && fill !== 'transparent') {
+            if (br.tl === br.tr && br.tr === br.br && br.br === br.bl && fill !== 'transparent') {
                 // Uniform radius — use <rect>
                 const rx = this.round(Math.min(br.tl, w / 2, h / 2));
                 return `<rect x="${x}" y="${y}" width="${w}" height="${h}"${rx > 0 ? ` rx="${rx}" ry="${rx}"` : ''} fill="${fill}"${filterAttr}${clipAttr}/>`;
