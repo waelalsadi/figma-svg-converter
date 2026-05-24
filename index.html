@@ -97,7 +97,7 @@ class FigmaSVGConverter {
         this.layerCounter = 0;
         this._imageQueue = [];
         this._imageReplacements = [];
-        this._processedTexts = new Set(); // track measured text nodes
+        this._processedAsLeaf = new Set(); // elements already rendered as leaf content
 
         const iframe = document.getElementById('render-iframe');
         iframe.width = this.viewportWidth;
@@ -195,6 +195,8 @@ class FigmaSVGConverter {
         const isLeaf = this._isLeafElement(el);
 
         if (isLeaf) {
+            // Mark this element and all its inline children as processed
+            this._markLeafContent(el);
             // Leaf element: background + border + inline text, NO children processing
             content += this._renderBackgrounds(style, x, y, w, h, br);
             content += this._renderBorder(style, x, y, w, h, br);
@@ -239,6 +241,10 @@ class FigmaSVGConverter {
         return `<g id="${this.esc(name)}" data-type="${isFrame ? 'Frame' : 'Group'}"${opAttr}>${content}</g>`;
     }
 
+    _isInlineTag(tag) {
+        return ['span','a','br','strong','em','b','i','u','small','sub','sup','mark','abbr','code','svg','img'].includes(tag);
+    }
+
     _isLeafElement(el) {
         if (el.tagName.toLowerCase() === 'img') return false;
         if (el.tagName.toLowerCase() === 'svg') return false;
@@ -252,6 +258,11 @@ class FigmaSVGConverter {
         return el.textContent.trim().length > 0;
     }
 
+    _markLeafContent(el) {
+        this._processedAsLeaf.add(el);
+        for (const c of el.children) this._markLeafContent(c);
+    }
+
     _processChildren(el) {
         const children = Array.from(el.children);
         children.sort((a, b) => {
@@ -259,7 +270,16 @@ class FigmaSVGConverter {
             const zb = parseInt(this._win.getComputedStyle(b).zIndex) || 0;
             return za - zb;
         });
-        return children.map(c => this.processElement(c)).filter(s => s.trim()).join('\n');
+        return children.map(c => {
+            // Skip elements already rendered as part of a leaf
+            if (this._processedAsLeaf.has(c)) {
+                // But still process their block-level children if any
+                const hasBlockChildren = Array.from(c.children).some(ch => !this._isInlineTag(ch.tagName.toLowerCase()));
+                if (hasBlockChildren) return this._processChildren(c);
+                return '';
+            }
+            return this.processElement(c);
+        }).filter(s => s.trim()).join('\n');
     }
 
     // ─── Backgrounds (every layer) ───
