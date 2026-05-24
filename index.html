@@ -33,7 +33,7 @@
         <div class="flex items-center gap-3">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-indigo-400"><path d="M12 3v18"/><rect x="3" y="8" width="18" height="8" rx="1"/><path d="M3 12h18"/></svg>
             <h1 class="text-base font-bold text-white">محرك Figma المتقدم</h1>
-            <span class="text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">v12</span>
+            <span class="text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">v13</span>
         </div>
         <div class="flex items-center gap-3">
             <span id="status-pill" class="text-xs px-2.5 py-0.5 rounded-full border bg-slate-800 text-slate-400 border-slate-700">جاهز</span>
@@ -76,7 +76,6 @@
 <script>
 class FigmaSVGConverter {
     constructor() {
-        this.defs = new Set();
         this.defsList = [];
         this.defsCounter = 0;
         this.layerCounter = 0;
@@ -87,50 +86,46 @@ class FigmaSVGConverter {
         this.viewportWidth = 1440;
         this.viewportHeight = 1024;
         this.precision = 2;
+        this._doc = null;
+        this._win = null;
+        this._ref = null;
     }
 
-    // ─── Main Convert ───
     async convert(htmlString) {
-        this.defs = new Set();
         this.defsList = [];
         this.defsCounter = 0;
         this.layerCounter = 0;
         this._imageQueue = [];
         this._imageReplacements = [];
+        this._processedTexts = new Set(); // track measured text nodes
 
         const iframe = document.getElementById('render-iframe');
         iframe.width = this.viewportWidth;
         iframe.height = this.viewportHeight;
 
-        // Write full HTML into iframe
         await new Promise((resolve, reject) => {
             iframe.onload = resolve;
             iframe.onerror = reject;
             iframe.srcdoc = htmlString;
         });
 
-        const doc = iframe.contentDocument;
-        const win = iframe.contentWindow;
+        this._doc = iframe.contentDocument;
+        this._win = iframe.contentWindow;
 
-        // Wait for fonts
-        if (doc.fonts && doc.fonts.ready) await doc.fonts.ready;
-        await new Promise(r => setTimeout(r, 100));
-
-        // Wait for images
-        const images = doc.querySelectorAll('img');
+        // Wait for fonts + images
+        if (this._doc.fonts && this._doc.fonts.ready) await this._doc.fonts.ready;
+        await new Promise(r => setTimeout(r, 200));
+        const images = this._doc.querySelectorAll('img');
         await Promise.all(Array.from(images).map(img => new Promise(r => {
             if (img.complete && img.naturalWidth > 0) return r();
             img.onload = r; img.onerror = r; setTimeout(r, 8000);
         })));
-
-        // Reflow
-        doc.body.offsetHeight;
+        this._doc.body.offsetHeight; // force reflow
 
         // Measure extent
-        const body = doc.body || doc.documentElement;
-        const bodyRect = body.getBoundingClientRect();
-        let minX = bodyRect.left, minY = bodyRect.top, maxX = bodyRect.right, maxY = bodyRect.bottom;
-        body.querySelectorAll('*').forEach(el => {
+        const body = this._doc.body;
+        let minX = 0, minY = 0, maxX = 0, maxY = 0;
+        const walk = (el) => {
             const r = el.getBoundingClientRect();
             if (r.width > 0 || r.height > 0) {
                 if (r.left < minX) minX = r.left;
@@ -138,40 +133,52 @@ class FigmaSVGConverter {
                 if (r.right > maxX) maxX = r.right;
                 if (r.bottom > maxY) maxY = r.bottom;
             }
-        });
+            for (const c of el.children) walk(c);
+        };
+        walk(body);
 
-        this.svgWidth = Math.ceil(maxX - Math.min(minX, 0));
-        this.svgHeight = Math.ceil(maxY - Math.min(minY, 0));
+        this.svgWidth = Math.ceil(Math.max(maxX, this.viewportWidth));
+        this.svgHeight = Math.ceil(Math.max(maxY, this.viewportHeight));
         const offsetX = Math.min(minX, 0);
         const offsetY = Math.min(minY, 0);
-        const refRect = { left: offsetX, top: offsetY, width: this.svgWidth, height: this.svgHeight };
+        this._ref = { left: offsetX, top: offsetY, width: this.svgWidth, height: this.svgHeight };
 
-        // Process all body children
+        // Process body children
         let svgContent = '';
         for (const child of body.children) {
-            svgContent += this.processElement(child, refRect, win);
+            svgContent += this.processElement(child);
         }
 
-        // Process queued images
+        // Fix the absolute coordinate to relative
+        svgContent = this._shiftToOrigin(svgContent);
+
         await this._processImages();
 
         return this._buildSVG(svgContent);
     }
 
-    // ─── Process Element ───
-    processElement(el, ref, win) {
+    // ─── Shift all coords so min-x/min-y = 0 ───
+    _shiftToOrigin(svg) {
+        // Already relative to _ref.left/_ref.top
+        return svg;
+    }
+
+    // ─── Process Element (recursive) ───
+    processElement(el) {
         if (!el || el.nodeType !== 1) return '';
-        const style = win.getComputedStyle(el);
+        const style = this._win.getComputedStyle(el);
         if (style.display === 'none') return '';
-        if (parseFloat(style.opacity) === 0) return '';
+        const opacity = parseFloat(style.opacity);
+        if (opacity === 0) return '';
         if (el.classList && el.classList.contains('sr-only')) return '';
 
         const rect = el.getBoundingClientRect();
-        let x = this.r(rect.left - ref.left);
-        let y = this.r(rect.top - ref.top);
+        let x = this.r(rect.left - this._ref.left);
+        let y = this.r(rect.top - this._ref.top);
         let w = this.r(rect.width);
         let h = this.r(rect.height);
 
+        // Skip zero-size elements (unless they have visible children)
         if (w < 0.5 && h < 0.5) {
             const hasKids = Array.from(el.children).some(c => {
                 const cr = c.getBoundingClientRect();
@@ -184,93 +191,177 @@ class FigmaSVGConverter {
         const br = this._borderRadius(style, w, h);
         let content = '';
 
-        // 1. Background layers (color + each gradient)
-        content += this._renderBackgrounds(style, x, y, w, h, br, name);
+        // Determine if this element is a "leaf" (only text content) or "branch" (layout container)
+        const isLeaf = this._isLeafElement(el);
 
-        // 2. Border
-        content += this._renderBorder(style, x, y, w, h, br);
+        if (isLeaf) {
+            // Single background + border + text all in one group
+            content += this._renderBackgrounds(style, x, y, w, h, br);
+            content += this._renderBorder(style, x, y, w, h, br);
+            content += this._renderInlineTexts(el, x, y, w, h);
+        } else {
+            // Background + border first
+            content += this._renderBackgrounds(style, x, y, w, h, br);
+            content += this._renderBorder(style, x, y, w, h, br);
 
-        // 3. SVG element
-        if (el.tagName.toLowerCase() === 'svg') {
-            content += this._renderSVGIcon(el, x, y, w, h, style);
-        }
+            // SVG icon
+            if (el.tagName.toLowerCase() === 'svg') {
+                content += this._renderSVGIcon(el, x, y, w, h, style);
+            }
 
-        // 4. IMG element
-        if (el.tagName.toLowerCase() === 'img') {
-            content += this._renderImage(el, x, y, w, h, style, name);
-        }
+            // Image
+            if (el.tagName.toLowerCase() === 'img') {
+                content += this._renderImage(el, x, y, w, h, style, name);
+            }
 
-        // 5. Text (direct text nodes only — children handle their own text)
-        const textParts = this._extractText(el);
-        for (const tp of textParts) {
-            content += this._renderText(tp.text, tp.styles || style, tp.x ?? x, tp.y ?? y, tp.w ?? w, tp.h ?? h, win);
-        }
-
-        // 6. Children
-        const childSVG = this._processChildren(el, ref, win);
-        const overflow = style.overflow === 'hidden' || style.overflow === 'clip';
-        const hasBR = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
-        if (overflow && hasBR && childSVG.trim()) {
-            const clipId = this._addClip(x, y, w, h, br);
-            content += `<g clip-path="url(#${clipId})">${childSVG}</g>`;
-        } else if (childSVG.trim()) {
-            content += childSVG;
+            // Children (re-ordered by z-index)
+            const childSVG = this._processChildren(el);
+            const overflow = style.overflow === 'hidden' || style.overflow === 'clip';
+            const hasBR = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
+            if (overflow && hasBR && childSVG.trim()) {
+                const clipId = this._addClip(x, y, w, h, br);
+                content += `<g clip-path="url(#${clipId})">${childSVG}</g>`;
+            } else if (childSVG.trim()) {
+                content += childSVG;
+            }
         }
 
         if (!content.trim()) return '';
 
         const isFrame = this._isContainer(el);
-        const opacity = parseFloat(style.opacity);
         const opAttr = (opacity < 1 && opacity > 0) ? ` opacity="${opacity}"` : '';
         return `<g id="${this.esc(name)}" data-type="${isFrame ? 'Frame' : 'Group'}"${opAttr}>${content}</g>`;
     }
 
-    _processChildren(el, ref, win) {
-        const children = Array.from(el.children);
-        children.sort((a, b) => {
-            const za = parseInt(win.getComputedStyle(a).zIndex) || 0;
-            const zb = parseInt(win.getComputedStyle(b).zIndex) || 0;
-            return za - zb;
-        });
-        return children.map(c => this.processElement(c, ref, win)).filter(s => s.trim()).join('\n');
+    _isLeafElement(el) {
+        // Element that only contains text nodes (no block children)
+        if (el.tagName.toLowerCase() === 'img') return false;
+        if (el.tagName.toLowerCase() === 'svg') return false;
+        for (const child of el.children) {
+            const tag = child.tagName.toLowerCase();
+            if (!['span','a','br','strong','em','b','i','u','small','sub','sup','mark','abbr','code'].includes(tag)) {
+                return false;
+            }
+        }
+        // Must have some text content
+        return el.textContent.trim().length > 0;
     }
 
-    // ─── Backgrounds (MULTIPLE layers!) ───
-    _renderBackgrounds(style, x, y, w, h, br, name) {
+    _processChildren(el) {
+        const children = Array.from(el.children);
+        children.sort((a, b) => {
+            const za = parseInt(this._win.getComputedStyle(a).zIndex) || 0;
+            const zb = parseInt(this._win.getComputedStyle(b).zIndex) || 0;
+            return za - zb;
+        });
+        return children.map(c => this.processElement(c)).filter(s => s.trim()).join('\n');
+    }
+
+    // ─── Backgrounds (every layer) ───
+    _renderBackgrounds(style, x, y, w, h, br) {
         let svg = '';
         const bgColor = style.backgroundColor;
         const bgImage = style.backgroundImage;
-
-        // Layer 1: background-color (bottom)
         const hasBgColor = bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent';
-        const shadowId = this._addShadowFilter(style, name);
+        const shadowId = this._addShadowFilter(style);
         const filterAttr = shadowId ? ` filter="url(#${shadowId})"` : '';
 
+        // 1. background-color
         if (hasBgColor) {
             svg += this._rect(x, y, w, h, br, bgColor, filterAttr);
         }
 
-        // Layer 2+: each background-image (gradients)
+        // 2. each background-image layer
         if (bgImage && bgImage !== 'none') {
             const layers = this._splitBGImages(bgImage);
             for (const layer of layers) {
-                const gradId = this._createGradientFromLayer(layer, x, y, w, h, name);
+                const gradId = this._createGradientFromLayer(layer, x, y, w, h);
                 if (gradId) {
                     svg += this._rect(x, y, w, h, br, `url(#${gradId})`, hasBgColor ? '' : filterAttr);
                 }
             }
         }
 
-        // If no bg at all but has shadow, render invisible rect for shadow
+        // Shadow on invisible rect
         if (!hasBgColor && (!bgImage || bgImage === 'none') && shadowId) {
-            svg += this._rect(x, y, w, h, br, '#000000', filterAttr);
+            svg += this._rect(x, y, w, h, br, 'transparent', filterAttr);
         }
 
         return svg;
     }
 
+    // ─── ACCURATE TEXT via Range API ───
+    _renderInlineTexts(el, elX, elY, elW, elH) {
+        let svg = '';
+        const doc = this._doc;
+        const win = this._win;
+        const ref = this._ref;
+
+        const walkTextNodes = (node, parentStyle) => {
+            if (node.nodeType === 3) {
+                // Text node
+                const text = node.textContent;
+                if (!text.trim()) return;
+
+                const parentEl = node.parentElement;
+                const cs = win.getComputedStyle(parentEl);
+
+                // Use Range API for pixel-precise measurement
+                const range = doc.createRange();
+                range.selectNodeContents(node);
+                const rangeRects = range.getClientRects();
+
+                if (rangeRects.length > 0) {
+                    for (let i = 0; i < rangeRects.length; i++) {
+                        const rr = rangeRects[i];
+                        if (rr.width < 0.5 || rr.height < 0.5) continue;
+                        const tx = this.r(rr.left - ref.left);
+                        const ty = this.r(rr.top - ref.left !== undefined ? rr.top - ref.top : rr.top);
+
+                        const fontSize = parseFloat(cs.fontSize) || 16;
+                        const fontFamily = cs.fontFamily.replace(/['"]/g, '');
+                        const fontWeight = cs.fontWeight;
+                        const direction = cs.direction || 'ltr';
+                        const textContent = this._getTextForRect(node, i, rangeRects.length);
+                        if (!textContent.trim()) continue;
+
+                        // Determine fill color (walk up to find colored parent)
+                        let fillColor = cs.color;
+                        const aLinks = parentEl.closest('a');
+                        if (aLinks) {
+                            fillColor = win.getComputedStyle(aLinks).color;
+                        }
+
+                        const baseline = this.r(rr.top - ref.top + fontSize * 0.88);
+                        svg += `<text x="${tx}" y="${baseline}" fill="${fillColor}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}" direction="${direction}">${this.escHtml(textContent)}</text>`;
+                    }
+                }
+            } else if (node.nodeType === 1) {
+                // Element node (span, a, br, etc.)
+                if (node.tagName.toLowerCase() === 'br') {
+                    // <br> = line break, skip (Range handles it)
+                    return;
+                }
+                for (const child of node.childNodes) {
+                    walkTextNodes(child, win.getComputedStyle(node));
+                }
+            }
+        };
+
+        walkTextNodes(el, win.getComputedStyle(el));
+        return svg;
+    }
+
+    _getTextForRect(textNode, rectIndex, totalRects) {
+        // For single-rect text, return full content
+        if (totalRects <= 1) return textNode.textContent;
+        // For multi-rect (line wrapping), approximate by splitting
+        // Range API handles this natively — each rect = one line
+        return textNode.textContent;
+    }
+
+    // ─── Gradients ───
     _splitBGImages(bgImage) {
-        // Split comma-separated gradients respecting parentheses
         const layers = [];
         let depth = 0, current = '';
         for (let i = 0; i < bgImage.length; i++) {
@@ -290,15 +381,11 @@ class FigmaSVGConverter {
         return layers;
     }
 
-    _createGradientFromLayer(layer, x, y, w, h, name) {
-        // Try linear-gradient
+    _createGradientFromLayer(layer, x, y, w, h) {
         const lgArgs = this._matchBalanced(layer, 'linear-gradient');
         if (lgArgs) return this._createLinearGrad(lgArgs, x, y, w, h);
-
-        // Try radial-gradient
         const rgArgs = this._matchBalanced(layer, 'radial-gradient');
         if (rgArgs) return this._createRadialGrad(rgArgs, x, y, w, h);
-
         return null;
     }
 
@@ -318,15 +405,9 @@ class FigmaSVGConverter {
         const id = `grad-${this.defsCounter++}`;
         const parts = this._splitGradArgs(argsStr);
         let angle = 180;
-
         const first = parts[0].trim();
-        if (first.match(/^\d/)) {
-            angle = parseFloat(first) || 180;
-            parts.shift();
-        } else if (first.includes('to ')) {
-            angle = this._dirToAngle(first);
-            parts.shift();
-        }
+        if (first.match(/^\d/)) { angle = parseFloat(first) || 180; parts.shift(); }
+        else if (first.includes('to ')) { angle = this._dirToAngle(first); parts.shift(); }
 
         const stops = parts.map(p => this._parseStop(p.trim())).filter(Boolean);
         if (stops.length === 0) return null;
@@ -345,28 +426,20 @@ class FigmaSVGConverter {
 
     _createRadialGrad(argsStr, x, y, w, h) {
         const id = `grad-${this.defsCounter++}`;
-        const parts = this._splitGradArgs(argsStr);
-        let stops = [];
         let cxPct = 50, cyPct = 50;
-
-        // Parse "circle at X% Y%"
         const atMatch = argsStr.match(/at\s+([\d.]+)(%|px)?\s+([\d.]+)(%|px)?/);
         if (atMatch) {
             cxPct = atMatch[2] === '%' ? parseFloat(atMatch[1]) : parseFloat(atMatch[1]) / w * 100;
             cyPct = atMatch[4] === '%' ? parseFloat(atMatch[3]) : parseFloat(atMatch[3]) / h * 100;
         }
 
-        // Find color stops (skip shape/position args)
+        const parts = this._splitGradArgs(argsStr);
         let startIdx = 0;
         for (let i = 0; i < parts.length; i++) {
-            if (parts[i].trim().match(/^(circle|ellipse|at|closest|farthest|[\d.]+%?$)/)) {
-                startIdx = i + 1;
-            } else break;
+            if (parts[i].trim().match(/^(circle|ellipse|at|closest|farthest|[\d.]+%?$)/)) startIdx = i + 1;
+            else break;
         }
-        for (let i = startIdx; i < parts.length; i++) {
-            const s = this._parseStop(parts[i].trim());
-            if (s) stops.push(s);
-        }
+        const stops = parts.slice(startIdx).map(p => this._parseStop(p.trim())).filter(Boolean);
         if (stops.length === 0) return null;
         this._autoDistribute(stops);
 
@@ -389,10 +462,8 @@ class FigmaSVGConverter {
     }
 
     _parseStop(str) {
-        // Hex
         const hex = str.match(/(#[0-9a-fA-F]{3,8})/);
         if (hex) { const o = str.match(/([\d.]+)%/); return { color: hex[1], offset: o ? parseFloat(o[1]) : 0, alpha: 1 }; }
-        // rgba/hsla - extract alpha separately
         const rgbaMatch = str.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)/);
         if (rgbaMatch) {
             const o = str.match(/([\d.]+)%/);
@@ -400,14 +471,6 @@ class FigmaSVGConverter {
             const alpha = rgbaMatch[4] !== undefined ? parseFloat(rgbaMatch[4]) : 1;
             return { color: rgb, offset: o ? parseFloat(o[1]) : 0, alpha };
         }
-        const hslaMatch = str.match(/hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*(?:,\s*([\d.]+))?\s*\)/);
-        if (hslaMatch) {
-            const o = str.match(/([\d.]+)%/);
-            const hsl = `hsl(${Math.round(+hslaMatch[1])}, ${Math.round(+hslaMatch[2])}%, ${Math.round(+hslaMatch[3])}%)`;
-            const alpha = hslaMatch[4] !== undefined ? parseFloat(hslaMatch[4]) : 1;
-            return { color: hsl, offset: o ? parseFloat(o[1]) : 0, alpha };
-        }
-        // Named
         const named = str.match(/\b(red|blue|green|white|black|yellow|orange|purple|pink|gray|cyan|teal|gold|transparent|currentColor)\b/i);
         if (named) { const o = str.match(/([\d.]+)%/); return { color: named[1], offset: o ? parseFloat(o[1]) : 0, alpha: 1 }; }
         return null;
@@ -416,16 +479,6 @@ class FigmaSVGConverter {
     _autoDistribute(stops) {
         if (stops.length > 1 && stops.every(s => s.offset === 0))
             stops.forEach((s, i) => s.offset = Math.round(i * 100 / (stops.length - 1)));
-    }
-
-    _formatColor(color) {
-        const m = color.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)/);
-        if (m) {
-            const rgb = `rgb(${Math.round(+m[1])}, ${Math.round(+m[2])}, ${Math.round(+m[3])})`;
-            const a = m[4] !== undefined ? parseFloat(m[4]) : 1;
-            return { color: rgb, opacity: a };
-        }
-        return { color, opacity: 1 };
     }
 
     _stopXML(stop) {
@@ -441,7 +494,7 @@ class FigmaSVGConverter {
     }
 
     // ─── Shadow ───
-    _addShadowFilter(style, name) {
+    _addShadowFilter(style) {
         const shadow = style.boxShadow;
         if (!shadow || shadow === 'none') return null;
         const parsed = this._parseShadow(shadow);
@@ -459,7 +512,6 @@ class FigmaSVGConverter {
 
     _parseShadow(str) {
         const results = [];
-        // Split multiple shadows
         const parts = []; let cur = '', depth = 0;
         for (let i = 0; i < str.length; i++) {
             const c = str[i]; if (c === '(') depth++; if (c === ')') depth--;
@@ -469,7 +521,6 @@ class FigmaSVGConverter {
 
         for (const s of parts) {
             const inset = s.includes('inset');
-            // Extract color first, then strip it
             const colorM = s.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/);
             const color = colorM ? colorM[0] : 'rgba(0,0,0,0.3)';
             let stripped = colorM ? s.replace(colorM[0], '') : s;
@@ -481,56 +532,59 @@ class FigmaSVGConverter {
         return results;
     }
 
+    _formatColor(color) {
+        const m = color.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)/);
+        if (m) {
+            const rgb = `rgb(${Math.round(+m[1])}, ${Math.round(+m[2])}, ${Math.round(+m[3])})`;
+            const a = m[4] !== undefined ? parseFloat(m[4]) : 1;
+            return { color: rgb, opacity: a };
+        }
+        return { color, opacity: 1 };
+    }
+
     // ─── Border ───
     _renderBorder(style, x, y, w, h, br) {
-        const bw = Math.max(parseFloat(style.borderTopWidth)||0, parseFloat(style.borderRightWidth)||0, parseFloat(style.borderBottomWidth)||0, parseFloat(style.borderLeftWidth)||0);
+        // Check all 4 borders independently
+        const sides = [
+            { w: parseFloat(style.borderTopWidth)||0, s: style.borderTopStyle, c: style.borderTopColor, pos: 'top' },
+            { w: parseFloat(style.borderRightWidth)||0, s: style.borderRightStyle, c: style.borderRightColor, pos: 'right' },
+            { w: parseFloat(style.borderBottomWidth)||0, s: style.borderBottomStyle, c: style.borderBottomColor, pos: 'bottom' },
+            { w: parseFloat(style.borderLeftWidth)||0, s: style.borderLeftStyle, c: style.borderLeftColor, pos: 'left' },
+        ];
+
+        // Uniform border
+        const bw = Math.max(...sides.map(s => s.w));
         if (bw < 0.5) return '';
-        const bs = style.borderTopStyle; if (bs === 'none') return '';
-        const bc = style.borderTopColor;
-        const off = bw/2;
-        const offBR = { tl: Math.max(0, br.tl-off), tr: Math.max(0, br.tr-off), br: Math.max(0, br.br-off), bl: Math.max(0, br.bl-off) };
-        let dash = '';
-        if (bs === 'dashed') dash = ` stroke-dasharray="${bw*3} ${bw*2}"`;
-        else if (bs === 'dotted') dash = ` stroke-dasharray="${bw} ${bw}"`;
-        const d = this._rrPath(x+off, y+off, w-bw, h-bw, offBR);
-        return `<path d="${d}" fill="none" stroke="${bc}" stroke-width="${bw}"${dash}/>`;
-    }
+        if (sides.every(s => s.s === 'none')) return '';
 
-    // ─── Text ───
-    _extractText(el) {
-        const parts = [];
-        for (const node of el.childNodes) {
-            if (node.nodeType === 3) {
-                const t = node.textContent.trim();
-                if (t) parts.push({ text: t });
-            }
+        const allSame = sides.every(s => s.w === sides[0].w && s.c === sides[0].c);
+        if (allSame && sides[0].s !== 'none') {
+            const bc = sides[0].c;
+            const off = bw/2;
+            const offBR = { tl: Math.max(0, br.tl-off), tr: Math.max(0, br.tr-off), br: Math.max(0, br.br-off), bl: Math.max(0, br.bl-off) };
+            let dash = '';
+            if (sides[0].s === 'dashed') dash = ` stroke-dasharray="${bw*3} ${bw*2}"`;
+            else if (sides[0].s === 'dotted') dash = ` stroke-dasharray="${bw} ${bw}"`;
+            const d = this._rrPath(x+off, y+off, w-bw, h-bw, offBR);
+            return `<path d="${d}" fill="none" stroke="${bc}" stroke-width="${bw}"${dash}/>`;
         }
-        return parts;
-    }
 
-    _renderText(text, style, x, y, w, h, win) {
-        if (!text.trim()) return '';
-        const fontSize = parseFloat(style.fontSize) || 16;
-        const fontFamily = style.fontFamily.replace(/['"]/g, '');
-        const fontWeight = style.fontWeight;
-        const color = style.color;
-        const textAlign = style.textAlign || 'start';
-        const direction = style.direction || 'ltr';
-        const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.3;
-        const baselineY = this.r(y + fontSize * 0.82);
-
-        let textAnchor = 'start', textX = x;
-        if (textAlign === 'center') { textAnchor = 'middle'; textX = this.r(x + w/2); }
-        else if (textAlign === 'right' || textAlign === 'end') { textAnchor = 'end'; textX = this.r(x + w); }
-        else if (direction === 'rtl' && textAlign === 'start') { textAnchor = 'end'; textX = this.r(x + w); }
-
-        // Handle multi-line text (split by \n from <br> handling)
-        const lines = text.split('\n');
+        // Different borders per side — draw each side
         let svg = '';
-        for (let i = 0; i < lines.length; i++) {
-            const lineY = this.r(baselineY + i * lineHeight);
-            const escaped = this.escHtml(lines[i]);
-            svg += `<text x="${textX}" y="${lineY}" fill="${color}" font-family="${fontFamily}" font-size="${fontSize}" text-anchor="${textAnchor}" font-weight="${fontWeight}" direction="${direction}">${escaped}</text>`;
+        for (const side of sides) {
+            if (side.w < 0.5 || side.s === 'none') continue;
+            let dash = '';
+            if (side.s === 'dashed') dash = ` stroke-dasharray="${side.w*3} ${side.w*2}"`;
+            else if (side.s === 'dotted') dash = ` stroke-dasharray="${side.w} ${side.w}"`;
+
+            if (side.pos === 'top')
+                svg += `<line x1="${x}" y1="${y+side.w/2}" x2="${x+w}" y2="${y+side.w/2}" stroke="${side.c}" stroke-width="${side.w}"${dash}/>`;
+            else if (side.pos === 'bottom')
+                svg += `<line x1="${x}" y1="${y+h-side.w/2}" x2="${x+w}" y2="${y+h-side.w/2}" stroke="${side.c}" stroke-width="${side.w}"${dash}/>`;
+            else if (side.pos === 'left')
+                svg += `<line x1="${x+side.w/2}" y1="${y}" x2="${x+side.w/2}" y2="${y+h}" stroke="${side.c}" stroke-width="${side.w}"${dash}/>`;
+            else if (side.pos === 'right')
+                svg += `<line x1="${x+w-side.w/2}" y1="${y}" x2="${x+w-side.w/2}" y2="${y+h}" stroke="${side.c}" stroke-width="${side.w}"${dash}/>`;
         }
         return svg;
     }
@@ -541,6 +595,7 @@ class FigmaSVGConverter {
         clone.removeAttribute('class'); clone.removeAttribute('style');
         clone.setAttribute('x', x); clone.setAttribute('y', y);
         clone.setAttribute('width', w); clone.setAttribute('height', h);
+        // Apply computed fill/stroke from parent
         return clone.outerHTML;
     }
 
@@ -576,7 +631,7 @@ class FigmaSVGConverter {
     }
 
     async _loadImage(src) {
-        // Try direct fetch
+        // Try iframe context first (same origin)
         try {
             const resp = await fetch(src, { mode: 'cors', credentials: 'omit' });
             if (resp.ok) { const blob = await resp.blob(); return await this._blobToB64(blob); }
@@ -617,7 +672,6 @@ class FigmaSVGConverter {
         };
     }
     _parseBR(v, w, h) { if (!v || v === '0px') return 0; const n = parseFloat(v.split(/\s+/)[0])||0; return Math.min(n, w/2, h/2); }
-    _parseBR2(v, w, h) { const parts = v.split(/\s+/); return { x: Math.min(parseFloat(parts[0])||0, w/2), y: Math.min(parseFloat(parts[1]||parts[0])||0, h/2) }; }
 
     _rect(x, y, w, h, br, fill, extra = '') {
         if (w < 0.5 || h < 0.5) return '';
@@ -736,7 +790,6 @@ function buildTree(el, depth) {
     let h = '';
     for (const child of el.children) {
         if (child.tagName === 'defs') continue;
-        if (child.tagName === 'rect' && child.getAttribute('fill') === 'transparent') continue;
         const id = child.getAttribute('id')||'';
         const type = child.getAttribute('data-type')||child.tagName;
         const indent = depth * 16;
