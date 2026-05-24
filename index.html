@@ -713,12 +713,34 @@
 
         parseColorStop(str) {
             // e.g., "#fff 0%", "rgba(0,0,0,0.1) 50%", "#000"
-            const colorMatch = str.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-zA-Z]+)/);
-            if (!colorMatch) return null;
-            const color = colorMatch[0];
-            const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
-            const offset = offsetMatch ? parseFloat(offsetMatch[1]) : null;
-            return { color, offset: offset !== null ? offset : 0 };
+            // Skip CSS keywords that aren't colors
+            const cssKeywords = /^(linear|radial|repeating|to|from|at|in|deg|grad|turn|px|em|rem|vw|vh|rgb|hsl)$/i;
+            
+            // Try hex color first
+            const hexMatch = str.match(/(#[0-9a-fA-F]{3,8})/);
+            if (hexMatch) {
+                const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
+                const offset = offsetMatch ? parseFloat(offsetMatch[1]) : null;
+                return { color: hexMatch[1], offset: offset !== null ? offset : 0 };
+            }
+            
+            // Try rgba/hsla
+            const funcMatch = str.match(/(rgba?\([^)]+\)|hsla?\([^)]+\))/);
+            if (funcMatch) {
+                const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
+                const offset = offsetMatch ? parseFloat(offsetMatch[1]) : null;
+                return { color: funcMatch[1], offset: offset !== null ? offset : 0 };
+            }
+            
+            // Try named colors (only common CSS named colors, not random words)
+            const namedMatch = str.match(/\b(red|blue|green|white|black|yellow|orange|purple|pink|gray|grey|cyan|magenta|lime|navy|teal|maroon|olive|aqua|silver|gold|coral|salmon|tomato|skyblue|steelblue|slategray|darkblue|darkgreen|darkred|lightblue|lightgreen|lightgray|lightgrey|transparent|currentColor)\b/i);
+            if (namedMatch) {
+                const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
+                const offset = offsetMatch ? parseFloat(offsetMatch[1]) : null;
+                return { color: namedMatch[1], offset: offset !== null ? offset : 0 };
+            }
+            
+            return null;
         }
 
         directionToAngle(dir) {
