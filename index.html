@@ -71,7 +71,7 @@
             </div>
         </div>
     </div>
-    <iframe id="render-iframe" width="1440" height="4096"></iframe>
+    <iframe id="render-iframe" width="1440" height="1024"></iframe>
 
 <script>
 class FigmaSVGConverter {
@@ -100,7 +100,7 @@ class FigmaSVGConverter {
 
         const iframe = document.getElementById('render-iframe');
         iframe.width = this.viewportWidth;
-        iframe.height = 4096;
+        iframe.height = 1024; // will be auto-resized by _autoResizeIframe
 
         const enhancedHTML = this._prepareHTML(htmlString);
 
@@ -122,6 +122,9 @@ class FigmaSVGConverter {
         })));
         this._doc.body.offsetHeight;
         this._doc.documentElement.offsetHeight;
+
+        // Auto-resize iframe to fit content height
+        await this._autoResizeIframe();
 
         const body = this._doc.body;
         let minX = 0, minY = 0, maxX = this.viewportWidth, maxY = 0;
@@ -170,6 +173,23 @@ class FigmaSVGConverter {
             }
         }
         return modified;
+    }
+
+    async _autoResizeIframe() {
+        // Wait a bit for layout, then resize iframe to fit content
+        await new Promise(r => setTimeout(r, 100));
+        this._doc.body.offsetHeight;
+        const contentH = Math.max(
+            this._doc.body.scrollHeight,
+            this._doc.documentElement.scrollHeight,
+            this._doc.body.offsetHeight,
+            this._doc.documentElement.offsetHeight
+        );
+        const iframe = document.getElementById('render-iframe');
+        // Set iframe height to actual content + some padding
+        iframe.height = Math.min(contentH + 100, 16384);
+        // Force re-layout
+        this._doc.body.offsetHeight;
     }
 
     processElement(el) {
