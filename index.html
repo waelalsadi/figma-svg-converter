@@ -299,28 +299,52 @@ class FigmaSVGConverter {
                 }
                 svg += `<text x="${tx}" y="${y}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}"${opAttr}>${this.escHtml(text)}</text>`;
             } else {
-                // Multi-rect (line wrapping): split text into lines based on number of rects
+                // Multi-rect (line wrapping): split text into lines using canvas measureText
                 // Each rect represents one visual line
-                const totalW = Array.from(rects).reduce((s, r) => s + r.width, 0);
-                const charWidth = totalW / Math.max(1, text.length);
                 let tspans = '';
-                let charOffset = 0;
+                let remaining = text;
+                const ctx = this._getTextCanvas().getContext('2d');
+                ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+                
                 for (let i = 0; i < rects.length; i++) {
                     const rr = rects[i];
                     if (rr.width < 0.5 || rr.height < 0.5) continue;
                     const ly = this.r(rr.top - ref.top + ascent);
-                    // Estimate chars in this line based on rect width
-                    const lineChars = Math.max(1, Math.round(rr.width / Math.max(1, charWidth)));
-                    const lineText = text.substring(charOffset, charOffset + lineChars).trim();
-                    charOffset += lineChars;
                     let lx;
                     if (isRTL) {
                         lx = this.r(rr.right - ref.left);
                     } else {
                         lx = this.r(rr.left - ref.left);
                     }
-                    if (lineText) {
-                        tspans += `<tspan x="${lx}" y="${ly}">${this.escHtml(lineText)}</tspan>`;
+                    
+                    // Measure text to find how many chars fit in this rect's width
+                    if (remaining.trim() && rr.width > 0) {
+                        let lineText = remaining.trim();
+                        // If this is the last rect, use all remaining text
+                        if (i === rects.length - 1) {
+                            tspans += `<tspan x="${lx}" y="${ly}">${this.escHtml(lineText)}</tspan>`;
+                            remaining = '';
+                        } else {
+                            // Binary search for the text that fits this rect width
+                            let lo = 0, hi = lineText.length;
+                            while (lo < hi) {
+                                const mid = Math.ceil((lo + hi) / 2);
+                                const w = ctx.measureText(lineText.substring(0, mid)).width;
+                                if (w <= rr.width) lo = mid;
+                                else hi = mid - 1;
+                            }
+                            // Try to break at word boundary
+                            let breakAt = lo;
+                            if (breakAt < lineText.length) {
+                                const spaceIdx = lineText.lastIndexOf(' ', breakAt);
+                                if (spaceIdx > 0) breakAt = spaceIdx;
+                            }
+                            const linePart = lineText.substring(0, breakAt).trim();
+                            remaining = lineText.substring(breakAt).trim();
+                            if (linePart) {
+                                tspans += `<tspan x="${lx}" y="${ly}">${this.escHtml(linePart)}</tspan>`;
+                            }
+                        }
                     }
                 }
                 const firstRR = rects[0];
