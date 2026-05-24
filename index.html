@@ -33,7 +33,7 @@
         <div class="flex items-center gap-3">
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-indigo-400"><path d="M12 3v18"/><rect x="3" y="8" width="18" height="8" rx="1"/><path d="M3 12h18"/></svg>
             <h1 class="text-base font-bold text-white">محرك Figma المتقدم</h1>
-            <span class="text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">v13</span>
+            <span class="text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">v14</span>
         </div>
         <div class="flex items-center gap-3">
             <span id="status-pill" class="text-xs px-2.5 py-0.5 rounded-full border bg-slate-800 text-slate-400 border-slate-700">جاهز</span>
@@ -97,7 +97,7 @@ class FigmaSVGConverter {
         this.layerCounter = 0;
         this._imageQueue = [];
         this._imageReplacements = [];
-        this._processedAsLeaf = new Set(); // elements already rendered as leaf content
+        this._renderedTextNodes = new Set(); // prevent duplicate text rendering
 
         const iframe = document.getElementById('render-iframe');
         iframe.width = this.viewportWidth;
@@ -120,7 +120,7 @@ class FigmaSVGConverter {
             if (img.complete && img.naturalWidth > 0) return r();
             img.onload = r; img.onerror = r; setTimeout(r, 8000);
         })));
-        this._doc.body.offsetHeight; // force reflow
+        this._doc.body.offsetHeight;
 
         // Measure extent
         const body = this._doc.body;
@@ -149,18 +149,8 @@ class FigmaSVGConverter {
             svgContent += this.processElement(child);
         }
 
-        // Fix the absolute coordinate to relative
-        svgContent = this._shiftToOrigin(svgContent);
-
         await this._processImages();
-
         return this._buildSVG(svgContent);
-    }
-
-    // ─── Shift all coords so min-x/min-y = 0 ───
-    _shiftToOrigin(svg) {
-        // Already relative to _ref.left/_ref.top
-        return svg;
     }
 
     // ─── Process Element (recursive) ───
@@ -178,7 +168,6 @@ class FigmaSVGConverter {
         let w = this.r(rect.width);
         let h = this.r(rect.height);
 
-        // Skip zero-size elements (unless they have visible children)
         if (w < 0.5 && h < 0.5) {
             const hasKids = Array.from(el.children).some(c => {
                 const cr = c.getBoundingClientRect();
@@ -191,50 +180,33 @@ class FigmaSVGConverter {
         const br = this._borderRadius(style, w, h);
         let content = '';
 
-        // Determine if this element is a "leaf" (only text content) or "branch" (layout container)
-        const isLeaf = this._isLeafElement(el);
+        // Background
+        content += this._renderBackgrounds(style, x, y, w, h, br);
+        // Border
+        content += this._renderBorder(style, x, y, w, h, br);
 
-        if (isLeaf) {
-            // Mark this element and all its inline children as processed
-            this._markLeafContent(el);
-            // Leaf element: background + border + inline text, NO children processing
-            content += this._renderBackgrounds(style, x, y, w, h, br);
-            content += this._renderBorder(style, x, y, w, h, br);
-            content += this._renderInlineTexts(el, x, y, w, h);
-            // Still render <svg> icons inside
-            const svgs = el.querySelectorAll('svg');
-            for (const s of svgs) {
-                const sr = s.getBoundingClientRect();
-                content += this._renderSVGIcon(s, this.r(sr.left - this._ref.left), this.r(sr.top - this._ref.top), this.r(sr.width), this.r(sr.height), this._win.getComputedStyle(s));
-            }
-        } else {
-            // Branch: background + border first, then process children
-            content += this._renderBackgrounds(style, x, y, w, h, br);
-            content += this._renderBorder(style, x, y, w, h, br);
+        // SVG icon element
+        if (el.tagName.toLowerCase() === 'svg') {
+            content += this._renderSVGIcon(el, x, y, w, h, style);
+        }
 
-            // SVG icon
-            if (el.tagName.toLowerCase() === 'svg') {
-                content += this._renderSVGIcon(el, x, y, w, h, style);
-            }
+        // Image element
+        if (el.tagName.toLowerCase() === 'img') {
+            content += this._renderImage(el, x, y, w, h, style, name);
+        }
 
-            // Image
-            if (el.tagName.toLowerCase() === 'img') {
-                content += this._renderImage(el, x, y, w, h, style, name);
-            }
+        // Text nodes directly inside this element (not in children)
+        content += this._renderTextOf(el, style);
 
-            // Text that belongs to THIS element only (direct text nodes, not children's text)
-            content += this._renderDirectText(el, x, y, w, h);
-
-            // Children (re-ordered by z-index)
-            const childSVG = this._processChildren(el);
-            const overflow = style.overflow === 'hidden' || style.overflow === 'clip';
-            const hasBR = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
-            if (overflow && hasBR && childSVG.trim()) {
-                const clipId = this._addClip(x, y, w, h, br);
-                content += `<g clip-path="url(#${clipId})">${childSVG}</g>`;
-            } else if (childSVG.trim()) {
-                content += childSVG;
-            }
+        // Children sorted by z-index
+        const childSVG = this._processChildren(el);
+        const overflow = style.overflow === 'hidden' || style.overflow === 'clip';
+        const hasBR = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
+        if (overflow && hasBR && childSVG.trim()) {
+            const clipId = this._addClip(x, y, w, h, br);
+            content += `<g clip-path="url(#${clipId})">${childSVG}</g>`;
+        } else if (childSVG.trim()) {
+            content += childSVG;
         }
 
         if (!content.trim()) return '';
@@ -244,28 +216,6 @@ class FigmaSVGConverter {
         return `<g id="${this.esc(name)}" data-type="${isFrame ? 'Frame' : 'Group'}"${opAttr}>${content}</g>`;
     }
 
-    _isInlineTag(tag) {
-        return ['span','a','br','strong','em','b','i','u','small','sub','sup','mark','abbr','code','svg','img'].includes(tag);
-    }
-
-    _isLeafElement(el) {
-        if (el.tagName.toLowerCase() === 'img') return false;
-        if (el.tagName.toLowerCase() === 'svg') return false;
-        if (el.tagName.toLowerCase() === 'a') return false; // <a> has child structure
-        for (const child of el.children) {
-            const tag = child.tagName.toLowerCase();
-            if (!['span','a','br','strong','em','b','i','u','small','sub','sup','mark','abbr','code'].includes(tag)) {
-                return false;
-            }
-        }
-        return el.textContent.trim().length > 0;
-    }
-
-    _markLeafContent(el) {
-        this._processedAsLeaf.add(el);
-        for (const c of el.children) this._markLeafContent(c);
-    }
-
     _processChildren(el) {
         const children = Array.from(el.children);
         children.sort((a, b) => {
@@ -273,19 +223,50 @@ class FigmaSVGConverter {
             const zb = parseInt(this._win.getComputedStyle(b).zIndex) || 0;
             return za - zb;
         });
-        return children.map(c => {
-            // Skip elements already rendered as part of a leaf
-            if (this._processedAsLeaf.has(c)) {
-                // But still process their block-level children if any
-                const hasBlockChildren = Array.from(c.children).some(ch => !this._isInlineTag(ch.tagName.toLowerCase()));
-                if (hasBlockChildren) return this._processChildren(c);
-                return '';
-            }
-            return this.processElement(c);
-        }).filter(s => s.trim()).join('\n');
+        return children.map(c => this.processElement(c)).filter(s => s.trim()).join('\n');
     }
 
-    // ─── Backgrounds (every layer) ───
+    // ─── Text rendering — ONLY direct text nodes of this element ───
+    // Walks childNodes (not children), renders only TEXT_NODE type
+    // Uses Range API for pixel-accurate positioning
+    _renderTextOf(el, parentStyle) {
+        let svg = '';
+        const doc = this._doc;
+        const win = this._win;
+        const ref = this._ref;
+
+        for (const node of el.childNodes) {
+            if (node.nodeType !== 3) continue; // only text nodes
+            const text = node.textContent;
+            if (!text.trim()) continue;
+            if (this._renderedTextNodes.has(node)) continue; // skip already-rendered
+            this._renderedTextNodes.add(node);
+
+            // Use the PARENT element style for text that's directly in this element
+            const cs = win.getComputedStyle(el);
+            const range = doc.createRange();
+            range.selectNodeContents(node);
+            const rects = range.getClientRects();
+
+            for (let i = 0; i < rects.length; i++) {
+                const rr = rects[i];
+                if (rr.width < 0.5 || rr.height < 0.5) continue;
+                const fontSize = parseFloat(cs.fontSize) || 16;
+                const fontFamily = cs.fontFamily.replace(/['"]/g, '');
+                const fontWeight = cs.fontWeight;
+                const direction = cs.direction || 'ltr';
+                const fc = this._formatColor(cs.color);
+
+                const tx = this.r(rr.left - ref.left);
+                const baseline = this.r(rr.top - ref.top + fontSize * 0.88);
+                const opAttr = fc.opacity < 1 ? ` opacity="${fc.opacity}"` : '';
+                svg += `<text x="${tx}" y="${baseline}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}" direction="${direction}"${opAttr}>${this.escHtml(text)}</text>`;
+            }
+        }
+        return svg;
+    }
+
+    // ─── Backgrounds ───
     _renderBackgrounds(style, x, y, w, h, br) {
         let svg = '';
         const bgColor = style.backgroundColor;
@@ -294,12 +275,12 @@ class FigmaSVGConverter {
         const shadowId = this._addShadowFilter(style);
         const filterAttr = shadowId ? ` filter="url(#${shadowId})"` : '';
 
-        // 1. background-color
         if (hasBgColor) {
-            svg += this._rect(x, y, w, h, br, bgColor, filterAttr);
+            const fc = this._formatColor(bgColor);
+            const opAttr = fc.opacity < 1 ? ` opacity="${fc.opacity}"` : '';
+            svg += this._rect(x, y, w, h, br, fc.color, `${filterAttr}${opAttr}`);
         }
 
-        // 2. each background-image layer
         if (bgImage && bgImage !== 'none') {
             const layers = this._splitBGImages(bgImage);
             for (const layer of layers) {
@@ -310,117 +291,11 @@ class FigmaSVGConverter {
             }
         }
 
-        // Shadow on invisible rect
         if (!hasBgColor && (!bgImage || bgImage === 'none') && shadowId) {
             svg += this._rect(x, y, w, h, br, 'transparent', filterAttr);
         }
 
         return svg;
-    }
-
-    // ─── Direct text only (not from children) for branch elements ───
-    _renderDirectText(el, elX, elY, elW, elH) {
-        let svg = '';
-        const doc = this._doc;
-        const win = this._win;
-        const ref = this._ref;
-        const cs = win.getComputedStyle(el);
-
-        // Only get TEXT_NODE children directly inside this element (not inside nested elements)
-        for (const node of el.childNodes) {
-            if (node.nodeType !== 3) continue;
-            const text = node.textContent;
-            if (!text.trim()) continue;
-
-            const range = doc.createRange();
-            range.selectNodeContents(node);
-            const rangeRects = range.getClientRects();
-            if (rangeRects.length > 0) {
-                for (let i = 0; i < rangeRects.length; i++) {
-                    const rr = rangeRects[i];
-                    if (rr.width < 0.5 || rr.height < 0.5) continue;
-                    const tx = this.r(rr.left - ref.left);
-                    const baseline = this.r(rr.top - ref.top + parseFloat(cs.fontSize) * 0.88);
-                    const fontSize = parseFloat(cs.fontSize) || 16;
-                    const fontFamily = cs.fontFamily.replace(/['"]/g, '');
-                    const fontWeight = cs.fontWeight;
-                    const direction = cs.direction || 'ltr';
-
-                    svg += `<text x="${tx}" y="${baseline}" fill="${cs.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}" direction="${direction}">${this.escHtml(text)}</text>`;
-                }
-            }
-        }
-        return svg;
-    }
-
-    // ─── ACCURATE TEXT via Range API (for leaf elements) ───
-    _renderInlineTexts(el, elX, elY, elW, elH) {
-        let svg = '';
-        const doc = this._doc;
-        const win = this._win;
-        const ref = this._ref;
-
-        const walkTextNodes = (node, parentStyle) => {
-            if (node.nodeType === 3) {
-                // Text node
-                const text = node.textContent;
-                if (!text.trim()) return;
-
-                const parentEl = node.parentElement;
-                const cs = win.getComputedStyle(parentEl);
-
-                // Use Range API for pixel-precise measurement
-                const range = doc.createRange();
-                range.selectNodeContents(node);
-                const rangeRects = range.getClientRects();
-
-                if (rangeRects.length > 0) {
-                    for (let i = 0; i < rangeRects.length; i++) {
-                        const rr = rangeRects[i];
-                        if (rr.width < 0.5 || rr.height < 0.5) continue;
-                        const tx = this.r(rr.left - ref.left);
-                        const ty = this.r(rr.top - ref.left !== undefined ? rr.top - ref.top : rr.top);
-
-                        const fontSize = parseFloat(cs.fontSize) || 16;
-                        const fontFamily = cs.fontFamily.replace(/['"]/g, '');
-                        const fontWeight = cs.fontWeight;
-                        const direction = cs.direction || 'ltr';
-                        const textContent = this._getTextForRect(node, i, rangeRects.length);
-                        if (!textContent.trim()) continue;
-
-                        // Determine fill color (walk up to find colored parent)
-                        let fillColor = cs.color;
-                        const aLinks = parentEl.closest('a');
-                        if (aLinks) {
-                            fillColor = win.getComputedStyle(aLinks).color;
-                        }
-
-                        const baseline = this.r(rr.top - ref.top + fontSize * 0.88);
-                        svg += `<text x="${tx}" y="${baseline}" fill="${fillColor}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}" direction="${direction}">${this.escHtml(textContent)}</text>`;
-                    }
-                }
-            } else if (node.nodeType === 1) {
-                // Element node (span, a, br, etc.)
-                if (node.tagName.toLowerCase() === 'br') {
-                    // <br> = line break, skip (Range handles it)
-                    return;
-                }
-                for (const child of node.childNodes) {
-                    walkTextNodes(child, win.getComputedStyle(node));
-                }
-            }
-        };
-
-        walkTextNodes(el, win.getComputedStyle(el));
-        return svg;
-    }
-
-    _getTextForRect(textNode, rectIndex, totalRects) {
-        // For single-rect text, return full content
-        if (totalRects <= 1) return textNode.textContent;
-        // For multi-rect (line wrapping), approximate by splitting
-        // Range API handles this natively — each rect = one line
-        return textNode.textContent;
     }
 
     // ─── Gradients ───
@@ -583,13 +458,12 @@ class FigmaSVGConverter {
         if (cur.trim()) parts.push(cur.trim());
 
         for (const s of parts) {
-            const inset = s.includes('inset');
             const colorM = s.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/);
             const color = colorM ? colorM[0] : 'rgba(0,0,0,0.3)';
             let stripped = colorM ? s.replace(colorM[0], '') : s;
             const nums = stripped.match(/[-+]?\d*\.?\d+(px|em|rem|vw|vh|%)?/g) || [];
             if (nums.length >= 2) {
-                results.push({ inset, x: parseFloat(nums[0])||0, y: parseFloat(nums[1])||0, blur: parseFloat(nums[2])||0, spread: parseFloat(nums[3])||0, color });
+                results.push({ x: parseFloat(nums[0])||0, y: parseFloat(nums[1])||0, blur: parseFloat(nums[2])||0, spread: parseFloat(nums[3])||0, color });
             }
         }
         return results;
@@ -607,7 +481,6 @@ class FigmaSVGConverter {
 
     // ─── Border ───
     _renderBorder(style, x, y, w, h, br) {
-        // Check all 4 borders independently
         const sides = [
             { w: parseFloat(style.borderTopWidth)||0, s: style.borderTopStyle, c: style.borderTopColor, pos: 'top' },
             { w: parseFloat(style.borderRightWidth)||0, s: style.borderRightStyle, c: style.borderRightColor, pos: 'right' },
@@ -615,39 +488,40 @@ class FigmaSVGConverter {
             { w: parseFloat(style.borderLeftWidth)||0, s: style.borderLeftStyle, c: style.borderLeftColor, pos: 'left' },
         ];
 
-        // Uniform border
         const bw = Math.max(...sides.map(s => s.w));
         if (bw < 0.5) return '';
         if (sides.every(s => s.s === 'none')) return '';
 
         const allSame = sides.every(s => s.w === sides[0].w && s.c === sides[0].c);
         if (allSame && sides[0].s !== 'none') {
-            const bc = sides[0].c;
+            const fc = this._formatColor(sides[0].c);
+            const c = fc.color; const opAttr = fc.opacity < 1 ? ` stroke-opacity="${fc.opacity}"` : '';
             const off = bw/2;
-            const offBR = { tl: Math.max(0, br.tl-off), tr: Math.max(0, br.tr-off), br: Math.max(0, br.br-off), bl: Math.max(0, br.bl-off) };
+            const offBR = { tl: Math.max(0, br.tl-off), tr: Math.max(0, br.tr-off), br: Math.min(br.br, w/2-off), bl: Math.min(br.bl, w/2-off) };
             let dash = '';
             if (sides[0].s === 'dashed') dash = ` stroke-dasharray="${bw*3} ${bw*2}"`;
             else if (sides[0].s === 'dotted') dash = ` stroke-dasharray="${bw} ${bw}"`;
             const d = this._rrPath(x+off, y+off, w-bw, h-bw, offBR);
-            return `<path d="${d}" fill="none" stroke="${bc}" stroke-width="${bw}"${dash}/>`;
+            return `<path d="${d}" fill="none" stroke="${c}" stroke-width="${bw}"${dash}${opAttr}/>`;
         }
 
-        // Different borders per side — draw each side
         let svg = '';
         for (const side of sides) {
             if (side.w < 0.5 || side.s === 'none') continue;
+            const fc = this._formatColor(side.c);
             let dash = '';
             if (side.s === 'dashed') dash = ` stroke-dasharray="${side.w*3} ${side.w*2}"`;
             else if (side.s === 'dotted') dash = ` stroke-dasharray="${side.w} ${side.w}"`;
+            const opAttr = fc.opacity < 1 ? ` stroke-opacity="${fc.opacity}"` : '';
 
             if (side.pos === 'top')
-                svg += `<line x1="${x}" y1="${y+side.w/2}" x2="${x+w}" y2="${y+side.w/2}" stroke="${side.c}" stroke-width="${side.w}"${dash}/>`;
+                svg += `<line x1="${x}" y1="${y+side.w/2}" x2="${x+w}" y2="${y+side.w/2}" stroke="${fc.color}" stroke-width="${side.w}"${dash}${opAttr}/>`;
             else if (side.pos === 'bottom')
-                svg += `<line x1="${x}" y1="${y+h-side.w/2}" x2="${x+w}" y2="${y+h-side.w/2}" stroke="${side.c}" stroke-width="${side.w}"${dash}/>`;
+                svg += `<line x1="${x}" y1="${y+h-side.w/2}" x2="${x+w}" y2="${y+h-side.w/2}" stroke="${fc.color}" stroke-width="${side.w}"${dash}${opAttr}/>`;
             else if (side.pos === 'left')
-                svg += `<line x1="${x+side.w/2}" y1="${y}" x2="${x+side.w/2}" y2="${y+h}" stroke="${side.c}" stroke-width="${side.w}"${dash}/>`;
+                svg += `<line x1="${x+side.w/2}" y1="${y}" x2="${x+side.w/2}" y2="${y+h}" stroke="${fc.color}" stroke-width="${side.w}"${dash}${opAttr}/>`;
             else if (side.pos === 'right')
-                svg += `<line x1="${x+w-side.w/2}" y1="${y}" x2="${x+w-side.w/2}" y2="${y+h}" stroke="${side.c}" stroke-width="${side.w}"${dash}/>`;
+                svg += `<line x1="${x+w-side.w/2}" y1="${y}" x2="${x+w-side.w/2}" y2="${y+h}" stroke="${fc.color}" stroke-width="${side.w}"${dash}${opAttr}/>`;
         }
         return svg;
     }
@@ -658,7 +532,6 @@ class FigmaSVGConverter {
         clone.removeAttribute('class'); clone.removeAttribute('style');
         clone.setAttribute('x', x); clone.setAttribute('y', y);
         clone.setAttribute('width', w); clone.setAttribute('height', h);
-        // Apply computed fill/stroke from parent
         return clone.outerHTML;
     }
 
@@ -694,12 +567,10 @@ class FigmaSVGConverter {
     }
 
     async _loadImage(src) {
-        // Try iframe context first (same origin)
         try {
             const resp = await fetch(src, { mode: 'cors', credentials: 'omit' });
             if (resp.ok) { const blob = await resp.blob(); return await this._blobToB64(blob); }
         } catch(e) {}
-        // Try canvas
         return new Promise(resolve => {
             try {
                 const img = new Image(); img.crossOrigin = 'anonymous';
@@ -811,7 +682,6 @@ async function convertNow() {
         setProgress(30);
         const svg = await converter.convert(html);
         currentSVG = svg; setProgress(80);
-        // Preview
         const parser = new DOMParser();
         const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
         const svgEl = svgDoc.querySelector('svg');
