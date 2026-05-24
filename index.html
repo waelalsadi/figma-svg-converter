@@ -610,19 +610,34 @@
         // ------------------------------------------------------------------
         // Gradient
         // ------------------------------------------------------------------
+        matchBalancedParen(str, prefix) {
+            // Find prefix( and extract everything until balanced closing )
+            const idx = str.indexOf(prefix + '(');
+            if (idx === -1) return null;
+            let start = idx + prefix.length + 1; // after the opening (
+            let depth = 1;
+            let i = start;
+            for (; i < str.length && depth > 0; i++) {
+                if (str[i] === '(') depth++;
+                if (str[i] === ')') depth--;
+            }
+            // i is now one past the closing )
+            return str.substring(start, i - 1);
+        }
+
         createGradient(bgImage, w, h, layerName) {
             if (!bgImage || bgImage === 'none') return null;
 
-            // Parse linear-gradient
-            const lgMatch = bgImage.match(/linear-gradient\s*\(([^)]+(?:\([^)]*\))*[^)]*)\)/);
+            // Parse linear-gradient - handle nested parentheses (e.g., rgb() inside)
+            const lgMatch = this.matchBalancedParen(bgImage, 'linear-gradient');
             if (lgMatch) {
-                return this.createLinearGradient(lgMatch[1], w, h, layerName);
+                return this.createLinearGradient(lgMatch, w, h, layerName);
             }
 
             // Parse radial-gradient
-            const rgMatch = bgImage.match(/radial-gradient\s*\(([^)]+(?:\([^)]*\))*[^)]*)\)/);
+            const rgMatch = this.matchBalancedParen(bgImage, 'radial-gradient');
             if (rgMatch) {
-                return this.createRadialGradient(rgMatch[1], w, h, layerName);
+                return this.createRadialGradient(rgMatch, w, h, layerName);
             }
 
             return null;
