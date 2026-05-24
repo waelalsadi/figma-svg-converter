@@ -391,13 +391,25 @@ class FigmaSVGConverter {
     _parseStop(str) {
         // Hex
         const hex = str.match(/(#[0-9a-fA-F]{3,8})/);
-        if (hex) { const o = str.match(/(\d+\.?\d*)%/); return { color: hex[1], offset: o ? parseFloat(o[1]) : 0 }; }
-        // rgba/hsla
-        const fn = str.match(/(rgba?\([^)]+\)|hsla?\([^)]+\))/);
-        if (fn) { const o = str.match(/(\d+\.?\d*)%/); return { color: fn[1], offset: o ? parseFloat(o[1]) : 0 }; }
+        if (hex) { const o = str.match(/([\d.]+)%/); return { color: hex[1], offset: o ? parseFloat(o[1]) : 0, alpha: 1 }; }
+        // rgba/hsla - extract alpha separately
+        const rgbaMatch = str.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)/);
+        if (rgbaMatch) {
+            const o = str.match(/([\d.]+)%/);
+            const rgb = `rgb(${Math.round(+rgbaMatch[1])}, ${Math.round(+rgbaMatch[2])}, ${Math.round(+rgbaMatch[3])})`;
+            const alpha = rgbaMatch[4] !== undefined ? parseFloat(rgbaMatch[4]) : 1;
+            return { color: rgb, offset: o ? parseFloat(o[1]) : 0, alpha };
+        }
+        const hslaMatch = str.match(/hsla?\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%\s*(?:,\s*([\d.]+))?\s*\)/);
+        if (hslaMatch) {
+            const o = str.match(/([\d.]+)%/);
+            const hsl = `hsl(${Math.round(+hslaMatch[1])}, ${Math.round(+hslaMatch[2])}%, ${Math.round(+hslaMatch[3])}%)`;
+            const alpha = hslaMatch[4] !== undefined ? parseFloat(hslaMatch[4]) : 1;
+            return { color: hsl, offset: o ? parseFloat(o[1]) : 0, alpha };
+        }
         // Named
         const named = str.match(/\b(red|blue|green|white|black|yellow|orange|purple|pink|gray|cyan|teal|gold|transparent|currentColor)\b/i);
-        if (named) { const o = str.match(/(\d+\.?\d*)%/); return { color: named[1], offset: o ? parseFloat(o[1]) : 0 }; }
+        if (named) { const o = str.match(/([\d.]+)%/); return { color: named[1], offset: o ? parseFloat(o[1]) : 0, alpha: 1 }; }
         return null;
     }
 
@@ -417,10 +429,10 @@ class FigmaSVGConverter {
     }
 
     _stopXML(stop) {
-        const f = this._formatColor(stop.color);
-        return f.opacity < 1
-            ? `<stop offset="${stop.offset}%" stop-color="${f.color}" stop-opacity="${f.opacity}"/>`
-            : `<stop offset="${stop.offset}%" stop-color="${f.color}"/>`;
+        const alpha = stop.alpha !== undefined ? stop.alpha : 1;
+        return alpha < 1
+            ? `<stop offset="${stop.offset}%" stop-color="${stop.color}" stop-opacity="${alpha}"/>`
+            : `<stop offset="${stop.offset}%" stop-color="${stop.color}"/>`;
     }
 
     _dirToAngle(d) {
