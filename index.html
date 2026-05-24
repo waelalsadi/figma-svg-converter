@@ -33,13 +33,17 @@
             background-color: #0f172a;
         }
 
+        /* Render container - VISIBLE but offscreen with FIXED dimensions */
         #render-container {
             position: absolute;
             left: -9999px;
             top: -9999px;
+            width: 1440px;
+            min-height: 1024px;
             visibility: visible;
             pointer-events: none;
             overflow: visible;
+            background: white;
         }
 
         #render-container * {
@@ -98,105 +102,64 @@
 
         .progress-bar {
             height: 3px;
-            background: #1e293b;
-            border-radius: 2px;
-            overflow: hidden;
-        }
-        .progress-bar-fill {
-            height: 100%;
-            background: linear-gradient(90deg, #6366f1, #8b5cf6);
-            transition: width 0.3s ease;
-        }
-
-        .layer-badge {
-            background: #1e293b;
-            color: #94a3b8;
-            font-size: 11px;
-            padding: 2px 8px;
-            border-radius: 4px;
-            border: 1px solid #334155;
         }
     </style>
 </head>
-<body class="flex flex-col h-screen">
+<body class="min-h-screen flex flex-col">
 
-    <!-- Top Bar -->
-    <header class="flex items-center justify-between px-4 py-3 bg-slate-900/80 backdrop-blur border-b border-slate-700/50 shrink-0">
+    <!-- Header -->
+    <div class="bg-slate-900/80 backdrop-blur border-b border-slate-700 px-4 py-3 flex items-center justify-between flex-shrink-0">
         <div class="flex items-center gap-3">
-            <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect x="3" y="8" width="18" height="8" rx="1"/><path d="M3 12h18"/></svg>
-            </div>
-            <div>
-                <h1 class="text-lg font-bold text-white leading-tight">محرك Figma المتقدم</h1>
-                <p class="text-xs text-slate-400">HTML → SVG بطبقات منظمة — الإصدار 10.0</p>
-            </div>
+            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-400"><path d="M12 3v18"></path><rect x="3" y="8" width="18" height="8" rx="1"></rect><path d="M3 12h18"></path></svg>
+            <h1 class="text-lg font-bold text-white">محرك Figma المتقدم</h1>
+            <span class="text-xs text-slate-500">v11.0</span>
         </div>
-        <div class="flex items-center gap-2">
-            <span id="status-pill" class="status-pill text-xs px-3 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-600">جاهز</span>
-            <span id="layer-count" class="layer-badge">0 طبقة</span>
-            <span id="size-badge" class="layer-badge">—</span>
+        <div class="flex items-center gap-3">
+            <div id="status-pill" class="status-pill text-xs px-3 py-1 rounded-full border bg-slate-800 text-slate-400 border-slate-700">جاهز</div>
+            <div id="layer-count" class="text-xs text-slate-500">0 طبقة</div>
+            <div id="size-badge" class="text-xs text-slate-500">—</div>
         </div>
-    </header>
+    </div>
 
-    <!-- Main Content -->
-    <div class="flex flex-1 overflow-hidden">
+    <!-- Progress bar -->
+    <div id="progress-bar" class="progress-bar bg-slate-800 hidden flex-shrink-0">
+        <div id="progress-fill" class="h-full bg-indigo-500 transition-all duration-300" style="width: 0%"></div>
+    </div>
 
-        <!-- Left Panel: Code Editor -->
-        <div class="flex flex-col w-1/2 border-l border-slate-700/50">
-            <div class="panel-header px-4 py-2 flex items-center justify-between shrink-0">
-                <div class="flex items-center gap-2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
-                    <span class="text-sm font-semibold text-slate-300">كود HTML</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="loadSample()" class="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 transition">نموذج</button>
-                    <button onclick="clearEditor()" class="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 transition">مسح</button>
+    <!-- Main -->
+    <div class="flex-1 flex overflow-hidden">
+
+        <!-- Left Panel: Editor -->
+        <div class="w-1/2 flex flex-col border-l border-slate-700 flex-shrink-0">
+            <div class="panel-header px-4 py-2 flex justify-between items-center">
+                <span class="text-sm font-semibold text-slate-300">كود HTML</span>
+                <div class="flex gap-2">
+                    <button onclick="loadSample()" class="btn-secondary text-xs px-3 py-1 rounded text-slate-300">نموذج</button>
+                    <button onclick="clearEditor()" class="btn-secondary text-xs px-3 py-1 rounded text-slate-300">مسح</button>
                 </div>
             </div>
-            <div class="flex-1 overflow-hidden relative">
-                <textarea id="html-input" class="editor-area w-full h-full p-4 bg-slate-950 text-slate-200 resize-none focus:outline-none text-sm" dir="ltr" spellcheck="false" placeholder="الصق كود HTML هنا..."></textarea>
-            </div>
+            <textarea id="html-input" class="editor-area flex-1 w-full p-4 bg-slate-950 text-slate-100 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 border-none" dir="ltr" spellcheck="false" placeholder="الصق كود HTML هنا..."></textarea>
         </div>
 
-        <!-- Right Panel: Preview + SVG Output -->
-        <div class="flex flex-col w-1/2 overflow-hidden">
+        <!-- Right Panel: Preview & Output -->
+        <div class="w-1/2 flex flex-col overflow-hidden">
             <!-- Tabs -->
-            <div class="panel-header px-4 py-2 flex items-center justify-between shrink-0">
+            <div class="panel-header px-4 py-2 flex justify-between items-center">
                 <div class="flex gap-1">
                     <button id="tab-preview" onclick="switchTab('preview')" class="tab-active px-3 py-1 rounded text-xs font-semibold transition">معاينة</button>
                     <button id="tab-svg" onclick="switchTab('svg')" class="tab-inactive px-3 py-1 rounded text-xs font-semibold transition">كود SVG</button>
                     <button id="tab-layers" onclick="switchTab('layers')" class="tab-inactive px-3 py-1 rounded text-xs font-semibold transition">الطبقات</button>
                 </div>
-                <div class="flex items-center gap-2">
-                    <button onclick="convertNow()" class="btn-convert px-4 py-1.5 rounded-lg text-xs font-bold text-white flex items-center gap-1.5">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
-                        تحويل إلى SVG
-                    </button>
-                    <button id="btn-copy" onclick="copySVG()" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hidden">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline ml-1"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-                        نسخ
-                    </button>
-                    <button id="btn-download" onclick="downloadSVG()" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hidden">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline ml-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                        تحميل
-                    </button>
-                </div>
-            </div>
-
-            <!-- Progress Bar -->
-            <div id="progress-bar" class="progress-bar hidden">
-                <div id="progress-fill" class="progress-bar-fill" style="width: 0%"></div>
+                <button onclick="convertNow()" class="btn-convert text-white text-xs px-4 py-1.5 rounded-lg font-semibold">تحويل إلى SVG</button>
             </div>
 
             <!-- Preview Panel -->
-            <div id="panel-preview" class="flex-1 overflow-auto p-4 preview-frame">
-                <div class="flex items-center justify-center min-h-full">
-                    <div id="preview-placeholder" class="text-center text-slate-500">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mx-auto mb-3 text-slate-600"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
-                        <p class="text-sm">الصق كود HTML ثم اضغط <strong class="text-indigo-400">تحويل</strong></p>
-                    </div>
-                    <div id="preview-content" class="hidden"></div>
+            <div id="panel-preview" class="flex-1 overflow-auto preview-frame flex items-center justify-center p-6">
+                <div id="preview-placeholder" class="text-center text-slate-600">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mx-auto mb-3 opacity-50"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path></svg>
+                    <p class="text-sm">أدخل كود HTML واضغط "تحويل"</p>
                 </div>
+                <div id="preview-content" class="hidden max-w-full"></div>
             </div>
 
             <!-- SVG Code Panel -->
@@ -208,15 +171,28 @@
             <div id="panel-layers" class="flex-1 overflow-auto hidden bg-slate-950 p-4">
                 <div id="layers-tree" class="text-sm font-mono text-slate-300"></div>
             </div>
+
+            <!-- Action buttons -->
+            <div class="bg-slate-900 border-t border-slate-700 px-4 py-2 flex items-center gap-2 flex-shrink-0">
+                <button id="btn-copy" onclick="copySVG()" class="hidden btn-secondary text-xs px-3 py-1.5 rounded text-slate-300 flex items-center gap-1">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg>
+                    نسخ
+                </button>
+                <button id="btn-download" onclick="downloadSVG()" class="hidden btn-secondary text-xs px-3 py-1.5 rounded text-slate-300 flex items-center gap-1">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+                    تحميل
+                </button>
+            </div>
         </div>
     </div>
 
-    <!-- Hidden render container -->
+    <!-- Render container -->
     <div id="render-container"></div>
 
     <script>
     // ===================================================================
-    // HTML → SVG Conversion Engine (Figma-Optimized)
+    // HTML → SVG Conversion Engine v11 (Figma-Optimized)
+    // Full HTML document support: extracts <style>, <link>, resolves CSS vars
     // ===================================================================
 
     class FigmaSVGConverter {
@@ -227,65 +203,170 @@
             this.svgWidth = 0;
             this.svgHeight = 0;
             this.imagesQueue = [];
+            this._imageReplacements = [];
+            this._injectedStyles = [];
+            this._injectedLinks = [];
             this.convertOptions = {
                 embedImages: true,
                 scale: 1,
                 precision: 2,
+                viewportWidth: 1440,
+                viewportHeight: 1024,
             };
+        }
+
+        // ------------------------------------------------------------------
+        // Parse full HTML document — extract <style>, <link>, <body>
+        // ------------------------------------------------------------------
+        parseHTMLDocument(htmlString) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(htmlString, 'text/html');
+
+            // Extract all <style> blocks
+            const styles = Array.from(doc.querySelectorAll('style')).map(s => s.textContent);
+
+            // Extract all <link> tags (fonts etc.)
+            const links = Array.from(doc.querySelectorAll('link[rel="stylesheet"], link[rel="preconnect"]'))
+                .map(l => l.outerHTML);
+
+            // Extract body content (or full document if no body)
+            const body = doc.body || doc.documentElement;
+            const bodyContent = body.innerHTML;
+
+            // Extract :root CSS variables
+            const rootVars = styles.join('\n').match(/:root\s*\{([^}]*)\}/g);
+
+            return { styles, links, bodyContent, rootVars };
+        }
+
+        // ------------------------------------------------------------------
+        // Inject extracted styles/links into the live document
+        // ------------------------------------------------------------------
+        injectResources(parsed) {
+            this.cleanupResources();
+
+            // Inject <link> tags into <head>
+            for (const linkHTML of parsed.links) {
+                const div = document.createElement('div');
+                div.innerHTML = linkHTML;
+                const linkEl = div.firstElementChild;
+                if (linkEl && linkEl.tagName === 'LINK') {
+                    // Only inject stylesheet links (skip preconnect)
+                    if (linkEl.rel === 'stylesheet') {
+                        document.head.appendChild(linkEl);
+                        this._injectedLinks.push(linkEl);
+                    }
+                }
+            }
+
+            // Inject <style> blocks
+            for (const css of parsed.styles) {
+                const styleEl = document.createElement('style');
+                styleEl.textContent = css;
+                document.head.appendChild(styleEl);
+                this._injectedStyles.push(styleEl);
+            }
+        }
+
+        cleanupResources() {
+            for (const s of this._injectedStyles) { try { s.remove(); } catch(e){} }
+            for (const l of this._injectedLinks) { try { l.remove(); } catch(e){} }
+            this._injectedStyles = [];
+            this._injectedLinks = [];
         }
 
         // ------------------------------------------------------------------
         // Main Entry Point
         // ------------------------------------------------------------------
-        async convert(htmlString, containerEl) {
+        async convert(htmlString) {
             this.defs = [];
             this.defsCounter = 0;
             this.layerCounter = 0;
             this.imagesQueue = [];
             this._imageReplacements = [];
 
-            // Render HTML in hidden container
             const rc = document.getElementById('render-container');
-            rc.innerHTML = htmlString;
 
-            // Wait for images and fonts to load
+            // Detect if it's a full HTML document
+            const isFullDoc = /<!DOCTYPE|<html/i.test(htmlString);
+
+            let bodyContent = htmlString;
+
+            if (isFullDoc) {
+                const parsed = this.parseHTMLDocument(htmlString);
+                this.injectResources(parsed);
+                bodyContent = parsed.bodyContent;
+            }
+
+            // Set render container dimensions and content
+            rc.style.width = this.convertOptions.viewportWidth + 'px';
+            rc.style.minHeight = this.convertOptions.viewportHeight + 'px';
+            rc.innerHTML = bodyContent;
+
+            // Wait for resources (images + fonts)
             await this.waitForResources(rc);
 
-            // Measure root - use first child element
+            // Force a reflow
+            rc.offsetHeight;
+
+            // Wait for fonts to actually render
+            if (document.fonts && document.fonts.ready) {
+                await document.fonts.ready;
+                // Extra delay for font rendering
+                await new Promise(r => setTimeout(r, 200));
+            }
+
+            // Measure root
             const root = rc.firstElementChild;
             if (!root) {
                 throw new Error('No HTML content found');
             }
+
+            // Find the actual bounding box of all content
             const rootRect = root.getBoundingClientRect();
 
-            this.svgWidth = Math.ceil(rootRect.width);
-            this.svgHeight = Math.ceil(rootRect.height);
+            // Also measure the full extent of all children
+            let minX = rootRect.left, minY = rootRect.top;
+            let maxX = rootRect.right, maxY = rootRect.bottom;
+            const allEls = rc.querySelectorAll('*');
+            for (const el of allEls) {
+                const r = el.getBoundingClientRect();
+                if (r.width > 0 || r.height > 0) {
+                    if (r.left < minX) minX = r.left;
+                    if (r.top < minY) minY = r.top;
+                    if (r.right > maxX) maxX = r.right;
+                    if (r.bottom > maxY) maxY = r.bottom;
+                }
+            }
+
+            this.svgWidth = Math.ceil(maxX - minX);
+            this.svgHeight = Math.ceil(maxY - minY);
+
+            // Use minX/minY as the reference point
+            const refRect = { left: minX, top: minY, width: this.svgWidth, height: this.svgHeight };
 
             // Process root element and its children
-            let svgContent = this.processElement(root, rootRect);
+            let svgContent = this.processElement(root, refRect);
 
-            // Also process any siblings of root (if multiple top-level elements)
+            // Process siblings
             let sibling = root.nextElementSibling;
             while (sibling) {
-                svgContent += '\n' + this.processElement(sibling, rootRect);
-                // Expand SVG dimensions if sibling extends beyond
-                const sibRect = sibling.getBoundingClientRect();
-                const sibRight = sibRect.left - rootRect.left + sibRect.width;
-                const sibBottom = sibRect.top - rootRect.top + sibRect.height;
-                if (sibRight > this.svgWidth) this.svgWidth = Math.ceil(sibRight);
-                if (sibBottom > this.svgHeight) this.svgHeight = Math.ceil(sibBottom);
+                svgContent += '\n' + this.processElement(sibling, refRect);
                 sibling = sibling.nextElementSibling;
             }
 
-            // Process queued images (async base64)
+            // Process queued images
             await this.processImages();
+
+            // Cleanup injected resources
+            this.cleanupResources();
 
             // Build final SVG
             return this.buildSVG(svgContent);
         }
 
         // ------------------------------------------------------------------
-        // Wait for resources (images, fonts)
+        // Wait for resources
         // ------------------------------------------------------------------
         async waitForResources(container) {
             const images = container.querySelectorAll('img');
@@ -293,10 +374,9 @@
 
             const imgPromises = Array.from(images).map(img => {
                 return new Promise((resolve) => {
-                    if (img.complete) { resolve(); return; }
+                    if (img.complete && img.naturalWidth > 0) { resolve(); return; }
                     img.onload = resolve;
                     img.onerror = resolve;
-                    // Timeout after 5s
                     setTimeout(resolve, 5000);
                 });
             });
@@ -307,10 +387,6 @@
         // ------------------------------------------------------------------
         // Process a single DOM element and its children
         // ------------------------------------------------------------------
-        processNode(node, rootRect) {
-            return this.processElement(node, rootRect);
-        }
-
         processElement(el, rootRect) {
             if (!this.isVisible(el)) return '';
 
@@ -318,36 +394,41 @@
             const rect = el.getBoundingClientRect();
             const styles = getComputedStyle(el);
 
-            // Position relative to root container
             const x = this.round(rect.left - rootRect.left);
             const y = this.round(rect.top - rootRect.top);
             const w = this.round(rect.width);
             const h = this.round(rect.height);
 
-            // Skip zero-size elements
-            if (w < 0.5 && h < 0.5) return '';
+            // Skip zero-size elements (but keep containers that have visible children)
+            if (w < 0.5 && h < 0.5) {
+                // Check if this is a container with positioned children
+                const hasVisibleChild = Array.from(el.children || []).some(child => {
+                    const cr = child.getBoundingClientRect();
+                    return cr.width > 0 || cr.height > 0;
+                });
+                if (!hasVisibleChild) return '';
+            }
 
             let groupContent = '';
 
-            // 1. Shadow filter (applied to background)
+            // 1. Shadow filter
             const shadowFilterId = this.createShadowFilter(styles, layerName);
 
-            // 2. Border radius values
+            // 2. Border radius
             const br = this.getBorderRadius(styles, w, h);
 
-            // 3. Background (solid color, gradient, or image)
-            // Apply clip-path directly to background rect instead of separate clip
+            // 3. Background
             const hasOverflow = styles.overflow === 'hidden' || styles.overflow === 'clip';
             const hasBorderRadius = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
-            
-            const bgSvg = this.createBackground(styles, x, y, w, h, br, shadowFilterId, hasOverflow && hasBorderRadius, layerName);
+
+            const bgSvg = this.createBackground(styles, x, y, w, h, br, shadowFilterId, layerName);
             if (bgSvg) groupContent += bgSvg;
 
             // 4. Border
             const borderSvg = this.createBorder(styles, x, y, w, h, br, layerName);
             if (borderSvg) groupContent += borderSvg;
 
-            // 5. SVG icons (inline SVG)
+            // 5. SVG icons
             if (el.tagName.toLowerCase() === 'svg') {
                 groupContent += this.createSVGIcon(el, x, y, w, h, styles);
             }
@@ -357,7 +438,7 @@
                 groupContent += this.createImageElement(el, x, y, w, h, styles, layerName);
             }
 
-            // 7. Text content (direct text nodes only)
+            // 7. Text
             const directText = this.getDirectText(el);
             if (directText.trim()) {
                 groupContent += this.createText(directText, styles, x, y, w, h);
@@ -370,14 +451,10 @@
             // 9. Transform
             const transform = this.getTransform(styles, el);
 
-            // 10. Clip children if overflow:hidden
-            const clipChildren = hasOverflow;
-            
-            // 11. Recurse into children
+            // 10. Children
             const childContent = this.processChildren(el, rootRect);
-            
-            if (clipChildren && hasBorderRadius && childContent.trim()) {
-                // Wrap children in a clip group
+
+            if (hasOverflow && hasBorderRadius && childContent.trim()) {
                 const clipId = this.createOverflowClip(x, y, w, h, br);
                 groupContent += `<g clip-path="url(#${clipId})">${childContent}</g>`;
             } else if (childContent.trim()) {
@@ -395,7 +472,6 @@
         processChildren(el, rootRect) {
             let parts = [];
             const children = Array.from(el.children || []);
-            // Sort by z-index (lower first)
             children.sort((a, b) => {
                 const za = parseFloat(getComputedStyle(a).zIndex) || 0;
                 const zb = parseFloat(getComputedStyle(b).zIndex) || 0;
@@ -416,9 +492,9 @@
         }
 
         // ------------------------------------------------------------------
-        // Background (solid, gradient, image)
+        // Background
         // ------------------------------------------------------------------
-        createBackground(styles, x, y, w, h, br, shadowFilterId, needsClip, layerName) {
+        createBackground(styles, x, y, w, h, br, shadowFilterId, layerName) {
             const bgImage = styles.backgroundImage;
             const bgColor = styles.backgroundColor;
             const hasGradient = bgImage && bgImage !== 'none';
@@ -428,14 +504,15 @@
             let filterAttr = shadowFilterId ? ` filter="url(#${shadowFilterId})"` : '';
 
             if (hasGradient) {
-                const gradientId = this.createGradient(bgImage, w, h, layerName);
+                const gradientId = this.createGradient(bgImage, x, y, w, h, layerName);
                 if (gradientId) {
                     svg += this.createRect(x, y, w, h, br, `url(#${gradientId})`, filterAttr, '');
+                } else if (hasBgColor) {
+                    svg += this.createRect(x, y, w, h, br, bgColor, filterAttr, '');
                 }
             } else if (hasBgColor) {
                 svg += this.createRect(x, y, w, h, br, bgColor, filterAttr, '');
             } else if (shadowFilterId) {
-                // Element has shadow but no bg — need bg rect for shadow to apply
                 svg += this.createRect(x, y, w, h, br, '#000000', filterAttr, '');
             }
 
@@ -443,35 +520,30 @@
         }
 
         // ------------------------------------------------------------------
-        // Create a rect or path (for border-radius)
+        // Create a rect or path
         // ------------------------------------------------------------------
         createRect(x, y, w, h, br, fill, filterAttr = '', clipAttr = '') {
-            if (br.tl === br.tr && br.tr === br.br && br.br === br.bl && fill !== 'transparent') {
-                // Uniform radius — use <rect>
+            if (w < 0.5 || h < 0.5) return '';
+            if (br.tl === br.tr && br.tr === br.br && br.br === br.bl) {
                 const rx = this.round(Math.min(br.tl, w / 2, h / 2));
                 return `<rect x="${x}" y="${y}" width="${w}" height="${h}"${rx > 0 ? ` rx="${rx}" ry="${rx}"` : ''} fill="${fill}"${filterAttr}${clipAttr}/>`;
             }
-            // Non-uniform radius — use <path>
             const d = this.roundedRectPath(x, y, w, h, br);
             return `<path d="${d}" fill="${fill}"${filterAttr}${clipAttr}/>`;
         }
 
-        // ------------------------------------------------------------------
-        // Rounded rect path (supports per-corner radius)
-        // ------------------------------------------------------------------
         roundedRectPath(x, y, w, h, r) {
-            // Clamp radius
             const tl = Math.min(r.tl, w / 2, h / 2);
             const tr = Math.min(r.tr, w / 2, h / 2);
-            const br = Math.min(r.br, w / 2, h / 2);
+            const br_ = Math.min(r.br, w / 2, h / 2);
             const bl = Math.min(r.bl, w / 2, h / 2);
 
             return [
                 `M${x + tl},${y}`,
                 `L${x + w - tr},${y}`,
                 tr > 0 ? `Q${x + w},${y} ${x + w},${y + tr}` : `L${x + w},${y}`,
-                `L${x + w},${y + h - br}`,
-                br > 0 ? `Q${x + w},${y + h} ${x + w - br},${y + h}` : `L${x + w},${y + h}`,
+                `L${x + w},${y + h - br_}`,
+                br_ > 0 ? `Q${x + w},${y + h} ${x + w - br_},${y + h}` : `L${x + w},${y + h}`,
                 `L${x + bl},${y + h}`,
                 bl > 0 ? `Q${x},${y + h} ${x},${y + h - bl}` : `L${x},${y + h}`,
                 `L${x},${y + tl}`,
@@ -484,11 +556,17 @@
         // Border
         // ------------------------------------------------------------------
         createBorder(styles, x, y, w, h, br, layerName) {
-            const bw = parseFloat(styles.borderTopWidth) || 0;
+            // Check all sides
+            const bwTop = parseFloat(styles.borderTopWidth) || 0;
+            const bwRight = parseFloat(styles.borderRightWidth) || 0;
+            const bwBottom = parseFloat(styles.borderBottomWidth) || 0;
+            const bwLeft = parseFloat(styles.borderLeftWidth) || 0;
+            const bw = Math.max(bwTop, bwRight, bwBottom, bwLeft);
             if (bw < 0.5) return '';
 
             const bc = styles.borderTopColor;
-            const bs = styles.borderTopStyle; // solid, dashed, etc.
+            const bs = styles.borderTopStyle;
+            if (bs === 'none') return '';
 
             const offset = bw / 2;
             const bx = x + offset;
@@ -496,7 +574,6 @@
             const bw2 = w - bw;
             const bh2 = h - bw;
 
-            // Adjusted border radius
             const bbr = {
                 tl: Math.max(0, br.tl - offset),
                 tr: Math.max(0, br.tr - offset),
@@ -505,11 +582,8 @@
             };
 
             let strokeDash = '';
-            if (bs === 'dashed') {
-                strokeDash = ` stroke-dasharray="${bw * 3} ${bw * 2}"`;
-            } else if (bs === 'dotted') {
-                strokeDash = ` stroke-dasharray="${bw} ${bw}"`;
-            }
+            if (bs === 'dashed') strokeDash = ` stroke-dasharray="${bw * 3} ${bw * 2}"`;
+            else if (bs === 'dotted') strokeDash = ` stroke-dasharray="${bw} ${bw}"`;
 
             const d = this.roundedRectPath(bx, by, bw2, bh2, bbr);
             return `<path d="${d}" fill="none" stroke="${bc}" stroke-width="${bw}"${strokeDash}/>`;
@@ -522,27 +596,18 @@
             const shadow = styles.boxShadow;
             if (!shadow || shadow === 'none') return null;
 
-            // Parse box-shadow (can have multiple shadows)
             const shadows = this.parseBoxShadow(shadow);
             if (shadows.length === 0) return null;
 
             const id = `shadow-${this.defsCounter++}`;
             let filters = '';
 
-            // We apply all shadows as a single filter
-            for (let i = 0; i < shadows.length; i++) {
-                const s = shadows[i];
+            for (const s of shadows) {
                 const blur = Math.max(s.blur, 0.1);
-                const spread = s.spread || 0;
                 const dx = s.x;
                 const dy = s.y;
                 const color = s.color || 'rgba(0,0,0,0.3)';
-
-                // Expand filter region for blur
-                const blurExpand = blur + Math.abs(spread);
-
-                filters += `
-                    <feDropShadow in="SourceGraphic" dx="${this.round(dx)}" dy="${this.round(dy)}" stdDeviation="${this.round(blur / 3)}" flood-color="${color}" flood-opacity="1"/>`;
+                filters += `<feDropShadow in="SourceGraphic" dx="${this.round(dx)}" dy="${this.round(dy)}" stdDeviation="${this.round(blur / 3)}" flood-color="${color}" flood-opacity="1"/>`;
             }
 
             this.defs.push(`<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">${filters}</filter>`);
@@ -551,8 +616,6 @@
 
         parseBoxShadow(shadowStr) {
             const results = [];
-            // Split by comma for multiple shadows (but be careful with rgba commas)
-            // Use a smarter split
             const shadows = [];
             let current = '';
             let parenDepth = 0;
@@ -570,10 +633,9 @@
             if (current.trim()) shadows.push(current.trim());
 
             for (const s of shadows) {
-                // Parse: inset? offsetX offsetY blurRadius spreadRadius? color
                 const isInset = s.includes('inset');
                 const nums = s.match(/[-+]?\d*\.?\d+(px|em|rem|vw|vh|%)?/g) || [];
-                const colorMatch = s.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|\b[a-zA-Z]+\b(?=\s*$))/);
+                const colorMatch = s.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/);
 
                 if (nums.length >= 2) {
                     results.push({
@@ -590,81 +652,55 @@
         }
 
         // ------------------------------------------------------------------
-        // ClipPath (for overflow:hidden and border-radius clipping)
-        // ------------------------------------------------------------------
-        createClipPath(styles, x, y, w, h, br, layerName) {
-            const overflow = styles.overflow;
-            const hasOverflow = overflow === 'hidden' || overflow === 'clip' || overflow === 'scroll';
-            const hasBr = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
-
-            // Only create clipPath if we have overflow:hidden AND border-radius
-            // (plain overflow:hidden clips children via group clip)
-            if (!hasOverflow && !hasBr) return null;
-
-            const id = `clip-${this.defsCounter++}`;
-            const d = this.roundedRectPath(x, y, w, h, br);
-            this.defs.push(`<clipPath id="${id}"><path d="${d}"/></clipPath>`);
-            return id;
-        }
-
-        // ------------------------------------------------------------------
-        // Gradient
+        // Gradient (with balanced-paren parsing for nested rgb())
         // ------------------------------------------------------------------
         matchBalancedParen(str, prefix) {
-            // Find prefix( and extract everything until balanced closing )
             const idx = str.indexOf(prefix + '(');
             if (idx === -1) return null;
-            let start = idx + prefix.length + 1; // after the opening (
+            let start = idx + prefix.length + 1;
             let depth = 1;
             let i = start;
             for (; i < str.length && depth > 0; i++) {
                 if (str[i] === '(') depth++;
                 if (str[i] === ')') depth--;
             }
-            // i is now one past the closing )
             return str.substring(start, i - 1);
         }
 
-        createGradient(bgImage, w, h, layerName) {
+        createGradient(bgImage, x, y, w, h, layerName) {
             if (!bgImage || bgImage === 'none') return null;
 
-            // Parse linear-gradient - handle nested parentheses (e.g., rgb() inside)
-            const lgMatch = this.matchBalancedParen(bgImage, 'linear-gradient');
-            if (lgMatch) {
-                return this.createLinearGradient(lgMatch, w, h, layerName);
+            // Parse linear-gradient
+            const lgArgs = this.matchBalancedParen(bgImage, 'linear-gradient');
+            if (lgArgs) {
+                return this.createLinearGradient(lgArgs, x, y, w, h, layerName);
             }
 
             // Parse radial-gradient
-            const rgMatch = this.matchBalancedParen(bgImage, 'radial-gradient');
-            if (rgMatch) {
-                return this.createRadialGradient(rgMatch, w, h, layerName);
+            const rgArgs = this.matchBalancedParen(bgImage, 'radial-gradient');
+            if (rgArgs) {
+                return this.createRadialGradient(rgArgs, x, y, w, h, layerName);
             }
 
             return null;
         }
 
-        createLinearGradient(argsStr, w, h, layerName) {
+        createLinearGradient(argsStr, x, y, w, h, layerName) {
             const id = `grad-${this.defsCounter++}`;
-
-            // Parse angle and color stops
-            let angle = 180; // default: top to bottom
+            let angle = 180;
             let stops = [];
 
-            // Try to parse angle
             const parts = this.splitGradientArgs(argsStr);
 
             let firstPart = parts[0].trim();
             if (firstPart.match(/^\d/)) {
-                // Angle in degrees
                 angle = parseFloat(firstPart) || 180;
                 parts.shift();
             } else if (firstPart.includes('to ')) {
-                // Direction keyword
                 angle = this.directionToAngle(firstPart);
                 parts.shift();
             }
 
-            // Parse color stops
             for (const part of parts) {
                 const stop = this.parseColorStop(part.trim());
                 if (stop) stops.push(stop);
@@ -672,32 +708,51 @@
 
             if (stops.length === 0) return null;
 
-            // Convert angle to SVG gradient coordinates
+            // If no explicit offsets, distribute evenly
+            if (stops.every(s => s.offset === 0 && stops.length > 1)) {
+                stops.forEach((s, i) => { s.offset = Math.round(i * 100 / (stops.length - 1)); });
+            }
+
             const angleRad = (angle - 90) * (Math.PI / 180);
-            const x1 = this.round(50 - Math.cos(angleRad) * 50, 2);
-            const y1 = this.round(50 - Math.sin(angleRad) * 50, 2);
-            const x2 = this.round(50 + Math.cos(angleRad) * 50, 2);
-            const y2 = this.round(50 + Math.sin(angleRad) * 50, 2);
+            const x1 = this.round(x + w/2 - Math.cos(angleRad) * w/2, 2);
+            const y1 = this.round(y + h/2 - Math.sin(angleRad) * h/2, 2);
+            const x2 = this.round(x + w/2 + Math.cos(angleRad) * w/2, 2);
+            const y2 = this.round(y + h/2 + Math.sin(angleRad) * h/2, 2);
 
             let stopElements = stops.map(s =>
                 `<stop offset="${s.offset}%" stop-color="${s.color}"/>`
             ).join('\n');
 
-            this.defs.push(`<linearGradient id="${id}" x1="${x1}%" y1="${y1}%" x2="${x2}%" y2="${y2}%" gradientUnits="userSpaceOnUse">${stopElements}</linearGradient>`);
+            this.defs.push(`<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" gradientUnits="userSpaceOnUse">${stopElements}</linearGradient>`);
             return id;
         }
 
         createRadialGradient(argsStr, w, h, layerName) {
             const id = `grad-${this.defsCounter++}`;
-            let stops = [];
             const parts = this.splitGradientArgs(argsStr);
+            let stops = [];
 
-            for (const part of parts) {
-                const stop = this.parseColorStop(part.trim());
+            // Skip shape/position args (first parts that aren't colors)
+            let startIdx = 0;
+            for (let i = 0; i < parts.length; i++) {
+                const part = parts[i].trim();
+                if (part.match(/^(circle|ellipse|at|[\d.]+%|closest|farthest)/)) {
+                    startIdx = i + 1;
+                } else {
+                    break;
+                }
+            }
+
+            for (let i = startIdx; i < parts.length; i++) {
+                const stop = this.parseColorStop(parts[i].trim());
                 if (stop) stops.push(stop);
             }
 
             if (stops.length === 0) return null;
+
+            if (stops.every(s => s.offset === 0 && stops.length > 1)) {
+                stops.forEach((s, i) => { s.offset = Math.round(i * 100 / (stops.length - 1)); });
+            }
 
             let stopElements = stops.map(s =>
                 `<stop offset="${s.offset}%" stop-color="${s.color}"/>`
@@ -727,34 +782,27 @@
         }
 
         parseColorStop(str) {
-            // e.g., "#fff 0%", "rgba(0,0,0,0.1) 50%", "#000"
-            // Skip CSS keywords that aren't colors
-            const cssKeywords = /^(linear|radial|repeating|to|from|at|in|deg|grad|turn|px|em|rem|vw|vh|rgb|hsl)$/i;
-            
-            // Try hex color first
+            // Try hex
             const hexMatch = str.match(/(#[0-9a-fA-F]{3,8})/);
             if (hexMatch) {
                 const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
-                const offset = offsetMatch ? parseFloat(offsetMatch[1]) : null;
-                return { color: hexMatch[1], offset: offset !== null ? offset : 0 };
+                return { color: hexMatch[1], offset: offsetMatch ? parseFloat(offsetMatch[1]) : 0 };
             }
-            
+
             // Try rgba/hsla
             const funcMatch = str.match(/(rgba?\([^)]+\)|hsla?\([^)]+\))/);
             if (funcMatch) {
                 const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
-                const offset = offsetMatch ? parseFloat(offsetMatch[1]) : null;
-                return { color: funcMatch[1], offset: offset !== null ? offset : 0 };
+                return { color: funcMatch[1], offset: offsetMatch ? parseFloat(offsetMatch[1]) : 0 };
             }
-            
-            // Try named colors (only common CSS named colors, not random words)
-            const namedMatch = str.match(/\b(red|blue|green|white|black|yellow|orange|purple|pink|gray|grey|cyan|magenta|lime|navy|teal|maroon|olive|aqua|silver|gold|coral|salmon|tomato|skyblue|steelblue|slategray|darkblue|darkgreen|darkred|lightblue|lightgreen|lightgray|lightgrey|transparent|currentColor)\b/i);
+
+            // Named colors
+            const namedMatch = str.match(/\b(red|blue|green|white|black|yellow|orange|purple|pink|gray|grey|cyan|magenta|lime|navy|teal|maroon|olive|aqua|silver|gold|transparent|currentColor)\b/i);
             if (namedMatch) {
                 const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
-                const offset = offsetMatch ? parseFloat(offsetMatch[1]) : null;
-                return { color: namedMatch[1], offset: offset !== null ? offset : 0 };
+                return { color: namedMatch[1], offset: offsetMatch ? parseFloat(offsetMatch[1]) : 0 };
             }
-            
+
             return null;
         }
 
@@ -768,236 +816,180 @@
         }
 
         // ------------------------------------------------------------------
-        // Text content
+        // Text
         // ------------------------------------------------------------------
         createText(text, styles, x, y, w, h) {
             const fontSize = parseFloat(styles.fontSize) || 16;
             const fontFamily = styles.fontFamily.replace(/['"]/g, '');
             const fontWeight = styles.fontWeight;
-            const fontStyle = styles.fontStyle;
             const color = styles.color;
-            const lineHeight = parseFloat(styles.lineHeight) || fontSize * 1.2;
-            const textAlign = styles.textAlign;
-            const textDecoration = styles.textDecoration;
-            const letterSpacing = parseFloat(styles.letterSpacing) || 0;
-            const direction = styles.direction || 'ltr';
+            const textAlign = styles.textAlign || 'start';
+            const lineHeight = parseFloat(styles.lineHeight) || fontSize * 1.3;
+            const direction = styles.direction || 'rtl';
 
-            // Calculate text position based on alignment
+            // Compute y offset for baseline
+            const baselineY = y + fontSize * 0.85;
+
+            let textAnchor = 'start';
             let textX = x;
-            let anchor = 'start';
-
             if (textAlign === 'center') {
+                textAnchor = 'middle';
                 textX = x + w / 2;
-                anchor = 'middle';
-            } else if (textAlign === 'right' || (direction === 'rtl' && textAlign !== 'left')) {
+            } else if (textAlign === 'right' || textAlign === 'end') {
+                textAnchor = 'end';
                 textX = x + w;
-                anchor = 'end';
+            } else if (direction === 'rtl' && textAlign === 'start') {
+                textAnchor = 'end';
+                textX = x + w;
             }
 
-            // Add padding offset
-            const paddingLeft = parseFloat(styles.paddingLeft) || 0;
-            const paddingTop = parseFloat(styles.paddingTop) || 0;
-            textX += paddingLeft;
+            const escapedText = this.escapeHtml(text.trim());
 
-            // Vertical position (text baseline)
-            const textY = y + paddingTop + fontSize;
-
-            // Handle multi-line text
-            const lines = text.split('\n').filter(l => l.trim());
-            if (lines.length === 0) return '';
-
-            let attrs = [
-                `x="${this.round(textX)}"`,
-                `fill="${color}"`,
-                `font-family="${fontFamily}"`,
-                `font-size="${this.round(fontSize)}"`,
-                `text-anchor="${anchor}"`,
-                `font-weight="${fontWeight}"`,
-            ];
-
-            if (fontStyle === 'italic') attrs.push('font-style="italic"');
-            if (letterSpacing > 0) attrs.push(`letter-spacing="${this.round(letterSpacing)}"`);
-            if (direction === 'rtl') attrs.push('direction="rtl"');
-            if (textDecoration.includes('underline')) attrs.push('text-decoration="underline"');
-
-            if (lines.length === 1) {
-                return `<text ${attrs.join(' ')} y="${this.round(textY)}">${this.escapeHtml(lines[0])}</text>`;
-            }
-
-            // Multi-line: use <tspan> with dy
-            const tspans = lines.map((line, i) => {
-                const dy = i === 0 ? 0 : this.round(lineHeight);
-                return `<tspan x="${this.round(textX)}" dy="${dy}">${this.escapeHtml(line)}</tspan>`;
-            }).join('');
-
-            return `<text ${attrs.join(' ')} y="${this.round(textY)}">${tspans}</text>`;
+            return `<text x="${this.round(textX)}" fill="${color}" font-family="${fontFamily}" font-size="${fontSize}" text-anchor="${textAnchor}" font-weight="${fontWeight}" direction="${direction}" y="${this.round(baselineY)}">${escapedText}</text>`;
         }
 
         // ------------------------------------------------------------------
-        // Image element
+        // SVG Icons
         // ------------------------------------------------------------------
-        createImageElement(imgEl, x, y, w, h, styles, layerName) {
-            const src = imgEl.src || imgEl.getAttribute('src');
+        createSVGIcon(el, x, y, w, h, styles) {
+            const clone = el.cloneNode(true);
+            clone.removeAttribute('class');
+            clone.removeAttribute('style');
+            clone.setAttribute('x', x);
+            clone.setAttribute('y', y);
+            clone.setAttribute('width', w);
+            clone.setAttribute('height', h);
+
+            // Apply computed fill/stroke
+            const fill = styles.fill && styles.fill !== 'none' ? styles.fill : '';
+            const stroke = styles.stroke && styles.stroke !== 'none' ? styles.stroke : '';
+            if (fill) clone.setAttribute('fill', fill);
+            if (stroke) clone.setAttribute('stroke', stroke);
+
+            return clone.outerHTML;
+        }
+
+        // ------------------------------------------------------------------
+        // Image elements
+        // ------------------------------------------------------------------
+        createImageElement(el, x, y, w, h, styles, layerName) {
+            const src = el.src || el.getAttribute('src');
             if (!src) return '';
 
-            const br = this.getBorderRadius(styles, w, h);
-            const objectId = `img-${this.defsCounter++}`;
+            const imgId = `img-${this.imagesQueue.length}`;
+            this.imagesQueue.push({ id: imgId, src, x, y, w, h, styles, layerName });
 
-            // Queue for async base64 conversion
-            this.imagesQueue.push({
-                id: objectId,
-                src: src,
-                x, y, w, h,
-                borderRadius: br,
-            });
-
-            // Placeholder — will be replaced after image loads
-            return `<!--IMAGE:${objectId}-->`;
+            return `<!--IMAGE:${imgId}-->`;
         }
 
         async processImages() {
             for (const img of this.imagesQueue) {
                 try {
-                    const base64 = await this.imageToBase64(img.src);
-                    const clipId = (img.borderRadius.tl > 0 || img.borderRadius.tr > 0 || img.borderRadius.br > 0 || img.borderRadius.bl > 0)
-                        ? this.createClipPathForImage(img) : null;
+                    const base64 = await this.loadImageAsBase64(img.src);
+                    if (base64) {
+                        const br = this.getBorderRadius(img.styles, img.w, img.h);
+                        const hasClip = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
+                        const imgSvg = hasClip
+                            ? this.createClippedImage(img.x, img.y, img.w, img.h, base64, br, img.layerName)
+                            : `<image x="${img.x}" y="${img.y}" width="${img.w}" height="${img.h}" href="${base64}"/>`;
 
-                    const clipAttr = clipId ? ` clip-path="url(#${clipId})"` : '';
-                    const preserveAttr = ' preserveAspectRatio="xMidYMid meet"';
-
-                    const svgImg = `<image id="${img.id}" x="${img.x}" y="${img.y}" width="${img.w}" height="${img.h}" href="${base64}"${preserveAttr}${clipAttr}/>`;
-
-                    // Replace placeholder in defs or content
-                    this._imageReplacements = this._imageReplacements || [];
-                    this._imageReplacements.push({ id: img.id, svg: svgImg });
+                        this._imageReplacements.push({ id: img.id, svg: imgSvg });
+                    }
                 } catch (e) {
                     console.warn('Failed to load image:', img.src, e);
                 }
             }
         }
 
-        createClipPathForImage(img) {
-            const id = `imgclip-${this.defsCounter++}`;
-            const d = this.roundedRectPath(img.x, img.y, img.w, img.h, img.borderRadius);
-            this.defs.push(`<clipPath id="${id}"><path d="${d}"/></clipPath>`);
-            return id;
+        createClippedImage(x, y, w, h, href, br, layerName) {
+            const clipId = `imgclip-${this.defsCounter++}`;
+            const d = this.roundedRectPath(x, y, w, h, br);
+            this.defs.push(`<clipPath id="${clipId}"><path d="${d}"/></clipPath>`);
+            return `<g clip-path="url(#${clipId})"><image x="${x}" y="${y}" width="${w}" height="${h}" href="${href}"/></g>`;
         }
 
-        async imageToBase64(url) {
-            try {
-                // Try proxy services to avoid CORS
-                const proxies = [
-                    (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-                    (u) => u, // Try direct first if same-origin
-                ];
+        async loadImageAsBase64(src) {
+            // Try fetching image via CORS proxies
+            const proxies = [
+                '', // direct
+            ];
 
-                for (const proxy of proxies) {
-                    try {
-                        const response = await fetch(proxy(url), { mode: 'cors' });
-                        if (response.ok) {
-                            const blob = await response.blob();
-                            return new Promise((resolve) => {
-                                const reader = new FileReader();
-                                reader.onloadend = () => resolve(reader.result);
-                                reader.onerror = () => resolve(url); // Fallback to URL
-                                reader.readAsDataURL(blob);
-                            });
-                        }
-                    } catch (e) {
-                        continue;
+            for (const proxy of proxies) {
+                const url = proxy ? proxy + encodeURIComponent(src) : src;
+                try {
+                    const resp = await fetch(url, { mode: 'cors', credentials: 'omit' });
+                    if (resp.ok) {
+                        const blob = await resp.blob();
+                        const base64 = await this.blobToBase64(blob);
+                        return base64;
                     }
-                }
-
-                // If all proxies fail, return original URL
-                return url;
-            } catch (e) {
-                return url;
-            }
-        }
-
-        // ------------------------------------------------------------------
-        // SVG Icons (inline SVG elements)
-        // ------------------------------------------------------------------
-        createSVGIcon(svgEl, x, y, w, h, styles) {
-            // Clone the SVG element
-            const clone = svgEl.cloneNode(true);
-
-            // Set position and size
-            clone.setAttribute('x', x);
-            clone.setAttribute('y', y);
-            clone.setAttribute('width', w);
-            clone.setAttribute('height', h);
-
-            // Get computed fill and stroke
-            const fill = styles.fill;
-            const stroke = styles.stroke;
-            const strokeWidth = styles.strokeWidth;
-            const fillOpacity = styles.fillOpacity;
-
-            // Clean up: remove class and style attributes that reference external CSS
-            this.cleanSVGElement(clone, fill, stroke, strokeWidth);
-
-            // Remove id attributes to avoid conflicts
-            clone.removeAttribute('id');
-
-            return clone.outerHTML;
-        }
-
-        cleanSVGElement(el, fill, stroke, strokeWidth) {
-            // Remove class attributes (they reference external styles)
-            el.removeAttribute('class');
-
-            // Apply colors if they're not set inline
-            if (fill && fill !== 'none') {
-                if (!el.getAttribute('fill') || el.getAttribute('fill') === 'currentColor') {
-                    el.setAttribute('fill', fill);
-                }
-            }
-            if (stroke && stroke !== 'none') {
-                if (!el.getAttribute('stroke') || el.getAttribute('stroke') === 'currentColor') {
-                    el.setAttribute('stroke', stroke);
+                } catch (e) {
+                    continue;
                 }
             }
 
-            // Recurse into children
-            for (const child of el.children) {
-                this.cleanSVGElement(child, fill, stroke, strokeWidth);
-            }
+            // Fallback: try drawing to canvas
+            return new Promise((resolve) => {
+                try {
+                    const img = new Image();
+                    img.crossOrigin = 'anonymous';
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = img.naturalWidth || img.width;
+                        canvas.height = img.naturalHeight || img.height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0);
+                        const base64 = canvas.toDataURL('image/png');
+                        resolve(base64);
+                    };
+                    img.onerror = () => resolve(null);
+                    img.src = src;
+                    setTimeout(() => resolve(null), 5000);
+                } catch (e) {
+                    resolve(null);
+                }
+            });
+        }
+
+        blobToBase64(blob) {
+            return new Promise((resolve) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve(reader.result);
+                reader.onerror = () => resolve(null);
+                reader.readAsDataURL(blob);
+            });
         }
 
         // ------------------------------------------------------------------
-        // Helper utilities
+        // Visibility check
         // ------------------------------------------------------------------
-
         isVisible(el) {
             if (!el || el.nodeType !== 1) return false;
-            const style = getComputedStyle(el);
-            if (style.display === 'none') return false;
-            if (style.visibility === 'hidden') return false;
-            if (parseFloat(style.opacity) === 0) return false;
-            if (el.offsetWidth === 0 && el.offsetHeight === 0) return false;
+            const styles = getComputedStyle(el);
+            if (styles.display === 'none') return false;
+            if (styles.visibility === 'hidden' && !el.closest('#render-container')) return false;
+            // Don't skip elements in render container just because visibility is hidden
+            // (render container itself is offscreen)
+            if (parseFloat(styles.opacity) === 0) return false;
+            if (el.getAttribute('aria-hidden') === 'true' && el.tagName !== 'SVG') return false;
+            // Skip sr-only elements
+            if (el.classList && el.classList.contains('sr-only')) return false;
             return true;
         }
 
         isContainer(el) {
-            const containers = ['div', 'section', 'main', 'header', 'footer', 'nav', 'article', 'aside', 'main', 'form', 'fieldset', 'details', 'summary', 'dialog', 'figure', 'figcaption', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'dl', 'dt', 'dd'];
-            return containers.includes(el.tagName.toLowerCase());
+            const tag = el.tagName.toLowerCase();
+            return ['div', 'section', 'main', 'header', 'footer', 'nav', 'article',
+                    'aside', 'form', 'ul', 'ol', 'table'].includes(tag);
         }
 
         getLayerName(el) {
-            // Priority: data-layer-name > id > class > tag-based
-            if (el.dataset.layerName) return this.sanitizeName(el.dataset.layerName);
+            // Priority: id > class > tag
             if (el.id) return this.sanitizeName(el.id);
-
             if (el.className && typeof el.className === 'string') {
-                const classes = el.className.split(/\s+/).filter(c =>
-                    !c.match(/^(flex|grid|block|inline|hidden|visible|overflow|text-|bg-|p-|m-|w-|h-|rounded|border|shadow|gap-|items-|justify-|space-|font-)/)
-                );
-                if (classes.length > 0) {
-                    return this.sanitizeName(classes[0]) || this.getTagBasedName(el);
-                }
+                const mainClass = el.className.split(/\s+/).find(c => !c.startsWith('css-'));
+                if (mainClass) return this.sanitizeName(mainClass);
             }
-
             return this.getTagBasedName(el);
         }
 
@@ -1011,17 +1003,12 @@
                 'svg': 'Icon', 'p': 'Paragraph', 'h1': 'Heading',
                 'h2': 'Heading', 'h3': 'Heading', 'h4': 'Heading',
                 'h5': 'Heading', 'h6': 'Heading', 'span': 'Text',
-                'input': 'Input', 'textarea': 'TextArea', 'select': 'Select',
-                'ul': 'List', 'ol': 'List', 'li': 'ListItem',
-                'table': 'Table', 'tr': 'TableRow', 'td': 'TableCell',
-                'th': 'TableHeader',
             };
             const base = map[tag] || tag.charAt(0).toUpperCase() + tag.slice(1);
             return `${base}-${++this.layerCounter}`;
         }
 
         sanitizeName(name) {
-            // Clean up class names and ids for SVG
             let clean = name
                 .replace(/[#.]/g, '')
                 .replace(/[^a-zA-Z0-9\u0600-\u06FF_-]/g, '-')
@@ -1044,14 +1031,13 @@
             if (!value || value === '0px') return 0;
             const parts = value.split(/\s+/);
             const v = parseFloat(parts[0]) || 0;
-            // Clamp to half of smallest dimension
             return Math.min(v, w / 2, h / 2);
         }
 
         getDirectText(el) {
             let text = '';
             for (const node of el.childNodes) {
-                if (node.nodeType === 3) { // Text node
+                if (node.nodeType === 3) {
                     text += node.textContent;
                 }
             }
@@ -1062,12 +1048,9 @@
             const transform = styles.transform;
             if (!transform || transform === 'none') return '';
 
-            // Parse CSS transform to SVG transform
-            // Handle common transforms
             const matrixMatch = transform.match(/matrix\(([^)]+)\)/);
             if (matrixMatch) {
                 const values = matrixMatch[1].split(',').map(v => parseFloat(v.trim()));
-                // matrix(a, b, c, d, e, f) → SVG transform
                 return ` transform="matrix(${values.join(' ')})"`;
             }
 
@@ -1076,19 +1059,6 @@
                 const tx = parseFloat(translateMatch[1]) || 0;
                 const ty = parseFloat(translateMatch[2]) || 0;
                 return ` transform="translate(${this.round(tx)},${this.round(ty)})"`;
-            }
-
-            const scaleMatch = transform.match(/scale\(([^,)]+)(?:,\s*([^)]+))?\)/);
-            if (scaleMatch) {
-                const sx = parseFloat(scaleMatch[1]) || 1;
-                const sy = parseFloat(scaleMatch[2]) || sx;
-                return ` transform="scale(${this.round(sx)},${this.round(sy)})"`;
-            }
-
-            const rotateMatch = transform.match(/rotate\(([^)]+)\)/);
-            if (rotateMatch) {
-                const angle = parseFloat(rotateMatch[1]) || 0;
-                return ` transform="rotate(${this.round(angle)})"`;
             }
 
             return '';
@@ -1109,10 +1079,9 @@
         }
 
         // ------------------------------------------------------------------
-        // Build final SVG string
+        // Build final SVG
         // ------------------------------------------------------------------
         buildSVG(content) {
-            // Replace image placeholders with actual SVG
             let finalContent = content;
             if (this._imageReplacements) {
                 for (const rep of this._imageReplacements) {
@@ -1142,7 +1111,6 @@ ${finalContent}
     let currentSVG = '';
     let currentTab = 'preview';
 
-    // Sample HTML
     const sampleHTML = `<div style="max-width: 420px; margin: 40px auto; font-family: 'Cairo', sans-serif; direction: rtl;">
   <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 20px; padding: 32px; box-shadow: 0 20px 60px rgba(102, 126, 234, 0.4);">
     <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
@@ -1189,7 +1157,7 @@ ${finalContent}
         currentSVG = '';
         document.getElementById('btn-copy').classList.add('hidden');
         document.getElementById('btn-download').classList.add('hidden');
-        updateStatus('جاهز', 'bg-slate-800 text-slate-400');
+        updateStatus('جاهز', 'bg-slate-800 text-slate-400 border-slate-700');
         updateBadge(0, '—');
     }
 
@@ -1204,7 +1172,16 @@ ${finalContent}
             return;
         }
 
-        previewEl.innerHTML = html;
+        // For preview, extract body content too
+        const isFullDoc = /<!DOCTYPE|<html/i.test(html);
+        let previewContent = html;
+        if (isFullDoc) {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            previewContent = (doc.body || doc.documentElement).innerHTML;
+        }
+
+        previewEl.innerHTML = previewContent;
         previewEl.classList.remove('hidden');
         placeholder.classList.add('hidden');
     }
@@ -1221,28 +1198,21 @@ ${finalContent}
         setProgress(10);
 
         try {
-            // Render HTML for measurement
             updatePreview();
             setProgress(30);
 
-            // Convert
-            const svg = await converter.convert(html, document.getElementById('render-container'));
+            const svg = await converter.convert(html);
             currentSVG = svg;
             setProgress(80);
 
-            // Update preview
             const previewEl = document.getElementById('preview-content');
-
-            // Clear preview and show SVG
             document.getElementById('preview-placeholder').classList.add('hidden');
 
-            // Parse SVG and display
             const parser = new DOMParser();
             const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
             const svgEl = svgDoc.querySelector('svg');
 
             if (svgEl) {
-                // Scale SVG to fit preview
                 const maxWidth = document.getElementById('panel-preview').clientWidth - 48;
                 const vh = document.getElementById('panel-preview').clientHeight - 48;
                 const svgW = parseFloat(svgEl.getAttribute('width')) || 400;
@@ -1260,26 +1230,19 @@ ${finalContent}
                 previewEl.style.display = 'inline-block';
             }
 
-            // Update SVG code view
             document.getElementById('svg-code').textContent = formatSVG(svg);
-
-            // Update layers view
             updateLayersView(svg);
 
-            // Count layers
             const layerCount = (svg.match(/<g id="/g) || []).length;
             const finalW = converter.svgWidth || 0;
             const finalH = converter.svgHeight || 0;
             updateBadge(layerCount, `${finalW}×${finalH}`);
 
-            // Show action buttons
             document.getElementById('btn-copy').classList.remove('hidden');
             document.getElementById('btn-download').classList.remove('hidden');
 
             setProgress(100);
             updateStatus('تم التحويل ✅', 'bg-green-900 text-green-300 border-green-600');
-
-            // Switch to preview tab
             switchTab('preview');
 
         } catch (err) {
@@ -1291,22 +1254,15 @@ ${finalContent}
     }
 
     function formatSVG(svg) {
-        // Simple formatting — add proper indentation
-        return svg
-            .replace(/></g, '>\n<')
-            .replace(/\n\n+/g, '\n')
-            .trim();
+        return svg.replace(/>/g, '>\n').replace(/\n\n+/g, '\n').trim();
     }
 
     function updateLayersView(svg) {
         const parser = new DOMParser();
         const doc = parser.parseFromString(svg, 'image/svg+xml');
-        const groups = doc.querySelectorAll('svg > g, svg g g');
-
         let html = '<div class="space-y-1 text-xs">';
         html += buildLayerTree(doc.querySelector('svg'), 0);
         html += '</div>';
-
         document.getElementById('layers-tree').innerHTML = html;
     }
 
@@ -1314,15 +1270,12 @@ ${finalContent}
         let html = '';
         const indent = depth * 16;
         const children = Array.from(element.children);
-
         for (const child of children) {
             if (child.tagName === 'defs') continue;
             if (child.tagName === 'rect' && child.getAttribute('fill') === 'transparent') continue;
-
             const id = child.getAttribute('id') || '';
             const type = child.getAttribute('data-type') || child.tagName;
             const isGroup = child.tagName === 'g';
-
             if (isGroup) {
                 const icon = type === 'Frame' ? '▣' : '◈';
                 html += `<div style="padding-right: ${indent}px;" class="flex items-center gap-1 py-0.5 px-2 rounded hover:bg-slate-800 cursor-pointer">
@@ -1341,7 +1294,6 @@ ${finalContent}
                 </div>`;
             }
         }
-
         return html;
     }
 
@@ -1350,7 +1302,6 @@ ${finalContent}
         document.getElementById('panel-preview').classList.toggle('hidden', tab !== 'preview');
         document.getElementById('panel-svg').classList.toggle('hidden', tab !== 'svg');
         document.getElementById('panel-layers').classList.toggle('hidden', tab !== 'layers');
-
         document.getElementById('tab-preview').className = tab === 'preview' ? 'tab-active px-3 py-1 rounded text-xs font-semibold transition' : 'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
         document.getElementById('tab-svg').className = tab === 'svg' ? 'tab-active px-3 py-1 rounded text-xs font-semibold transition' : 'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
         document.getElementById('tab-layers').className = tab === 'layers' ? 'tab-active px-3 py-1 rounded text-xs font-semibold transition' : 'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
@@ -1396,14 +1347,12 @@ ${finalContent}
         document.getElementById('progress-fill').style.width = pct + '%';
     }
 
-    // Auto-update preview on input (debounced)
     let previewTimeout;
     document.getElementById('html-input').addEventListener('input', () => {
         clearTimeout(previewTimeout);
         previewTimeout = setTimeout(updatePreview, 300);
     });
 
-    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
         if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
             e.preventDefault();
@@ -1411,7 +1360,6 @@ ${finalContent}
         }
     });
 
-    // Load sample on start
     window.addEventListener('load', () => {
         loadSample();
     });
