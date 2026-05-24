@@ -607,7 +607,10 @@
                 const dx = s.x;
                 const dy = s.y;
                 const color = s.color || 'rgba(0,0,0,0.3)';
-                filters += `<feDropShadow in="SourceGraphic" dx="${this.round(dx)}" dy="${this.round(dy)}" stdDeviation="${this.round(blur / 3)}" flood-color="${color}" flood-opacity="1"/>`;
+                // Extract alpha from rgba for flood-opacity
+                const fmt = this.formatColorForSVG(color);
+                const floodOpacity = fmt.opacity;
+                filters += `<feDropShadow in="SourceGraphic" dx="${this.round(dx)}" dy="${this.round(dy)}" stdDeviation="${this.round(blur / 3)}" flood-color="${fmt.color}" flood-opacity="${floodOpacity}"/>`;
             }
 
             this.defs.push(`<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">${filters}</filter>`);
@@ -634,8 +637,17 @@
 
             for (const s of shadows) {
                 const isInset = s.includes('inset');
-                const nums = s.match(/[-+]?\d*\.?\d+(px|em|rem|vw|vh|%)?/g) || [];
+                // Extract color first, then remove it to avoid number conflicts
                 const colorMatch = s.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/);
+                const color = colorMatch ? colorMatch[0] : null;
+
+                // Strip out color (which has numbers inside rgba/hsla) before extracting numeric values
+                let stripped = s;
+                if (colorMatch) {
+                    stripped = s.replace(colorMatch[0], '');
+                }
+
+                const nums = stripped.match(/[-+]?\d*\.?\d+(px|em|rem|vw|vh|%)?/g) || [];
 
                 if (nums.length >= 2) {
                     results.push({
@@ -644,7 +656,7 @@
                         y: parseFloat(nums[1]) || 0,
                         blur: parseFloat(nums[2]) || 0,
                         spread: parseFloat(nums[3]) || 0,
-                        color: colorMatch ? colorMatch[0] : 'rgba(0,0,0,0.3)',
+                        color: color || 'rgba(0,0,0,0.3)',
                     });
                 }
             }
@@ -685,6 +697,33 @@
             return null;
         }
 
+        formatColorForSVG(color) {
+            // Convert rgba(r,g,b,a) to rgb + separate opacity
+            const rgbaMatch = color.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)/);
+            if (rgbaMatch) {
+                const r = Math.round(parseFloat(rgbaMatch[1]));
+                const g = Math.round(parseFloat(rgbaMatch[2]));
+                const b = Math.round(parseFloat(rgbaMatch[3]));
+                const a = rgbaMatch[4] !== undefined ? parseFloat(rgbaMatch[4]) : 1;
+                return { color: `rgb(${r}, ${g}, ${b})`, opacity: a };
+            }
+            // hsla
+            const hslaMatch = color.match(/hsla?\(\s*([\d.]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)\s*(?:,\s*([\d.]+))?\s*\)/);
+            if (hslaMatch) {
+                const a = hslaMatch[4] !== undefined ? parseFloat(hslaMatch[4]) : 1;
+                return { color: color.replace(/[\d.]+\)$/, '') + ')', opacity: a };
+            }
+            return { color, opacity: 1 };
+        }
+
+        formatStopElement(stop) {
+            const fmt = this.formatColorForSVG(stop.color);
+            if (fmt.opacity < 1) {
+                return `<stop offset="${stop.offset}%" stop-color="${fmt.color}" stop-opacity="${fmt.opacity}"/>`;
+            }
+            return `<stop offset="${stop.offset}%" stop-color="${fmt.color}"/>`;
+        }
+
         createLinearGradient(argsStr, x, y, w, h, layerName) {
             const id = `grad-${this.defsCounter++}`;
             let angle = 180;
@@ -720,14 +759,14 @@
             const y2 = this.round(y + h/2 + Math.sin(angleRad) * h/2, 2);
 
             let stopElements = stops.map(s =>
-                `<stop offset="${s.offset}%" stop-color="${s.color}"/>`
+                this.formatStopElement(s)
             ).join('\n');
 
             this.defs.push(`<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" gradientUnits="userSpaceOnUse">${stopElements}</linearGradient>`);
             return id;
         }
 
-        createRadialGradient(argsStr, w, h, layerName) {
+        createRadialGradient(argsStr, x, y, w, h, layerName) {
             const id = `grad-${this.defsCounter++}`;
             const parts = this.splitGradientArgs(argsStr);
             let stops = [];
@@ -755,10 +794,21 @@
             }
 
             let stopElements = stops.map(s =>
-                `<stop offset="${s.offset}%" stop-color="${s.color}"/>`
+                this.formatStopElement(s)
             ).join('\n');
 
-            this.defs.push(`<radialGradient id="${id}" cx="50%" cy="50%" r="50%" gradientUnits="userSpaceOnUse">${stopElements}</radialGradient>`);
+            // Parse "circle at X% Y%" for position
+            let cxPct = 50, cyPct = 50;
+            const atMatch = argsStr.match(/at\s+([\d.]+)%\s+([\d.]+)%/);
+            if (atMatch) {
+                cxPct = parseFloat(atMatch[1]);
+                cyPct = parseFloat(atMatch[2]);
+            }
+            const cx = this.round(x + w * cxPct / 100);
+            const cy = this.round(y + h * cyPct / 100);
+            const r = this.round(Math.max(w, h) / 2);
+
+            this.defs.push(`<radialGradient id="${id}" cx="${cx}" cy="${cy}" r="${r}" gradientUnits="userSpaceOnUse">${stopElements}</radialGradient>`);
             return id;
         }
 
