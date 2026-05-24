@@ -299,64 +299,99 @@ class FigmaSVGConverter {
                 }
                 svg += `<text x="${tx}" y="${y}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}"${opAttr}>${this.escHtml(text)}</text>`;
             } else {
-                // Multi-rect (line wrapping): split text into lines using canvas measureText
-                // Each rect represents one visual line
-                let tspans = '';
-                let remaining = text;
-                const ctx = this._getTextCanvas().getContext('2d');
-                ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+                // Multi-rect: could be line-wrapping OR bidi text segmentation
+                // Check if rects are on the same line (bidi) or different lines (wrap)
+                const sameLine = (r1, r2) => Math.abs(r1.top - r2.top) < 5;
                 
-                for (let i = 0; i < rects.length; i++) {
-                    const rr = rects[i];
-                    if (rr.width < 0.5 || rr.height < 0.5) continue;
-                    const ly = this.r(rr.top - ref.top + ascent);
-                    let lx;
-                    if (isRTL) {
-                        lx = this.r(rr.right - ref.left);
+                // Group rects by line
+                const lines = [];
+                let currentLine = [rects[0]];
+                for (let i = 1; i < rects.length; i++) {
+                    if (sameLine(rects[i], currentLine[0])) {
+                        currentLine.push(rects[i]);
                     } else {
-                        lx = this.r(rr.left - ref.left);
+                        lines.push(currentLine);
+                        currentLine = [rects[i]];
                     }
+                }
+                lines.push(currentLine);
+                
+                // If only 1 line with multi rects → bidi text → render as single text at bounding box
+                if (lines.length === 1) {
+                    const bRect = range.getBoundingClientRect();
+                    const ly = this.r(bRect.top - ref.top + ascent);
+                    let lx, anchor;
+                    if (isRTL) {
+                        lx = this.r(bRect.right - ref.left);
+                        anchor = 'end';
+                    } else {
+                        lx = this.r(bRect.left - ref.left);
+                        anchor = 'start';
+                    }
+                    svg += `<text x="${lx}" y="${ly}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}"${opAttr}>${this.escHtml(text)}</text>`;
+                } else {
+                    // Multiple lines → split text using canvas measureText
+                    let remaining = text.trim();
+                    const ctx = this._getTextCanvas().getContext('2d');
+                    ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+                    let tspans = '';
                     
-                    // Measure text to find how many chars fit in this rect's width
-                    if (remaining.trim() && rr.width > 0) {
-                        let lineText = remaining.trim();
-                        // If this is the last rect, use all remaining text
-                        if (i === rects.length - 1) {
-                            tspans += `<tspan x="${lx}" y="${ly}">${this.escHtml(lineText)}</tspan>`;
+                    for (let li = 0; li < lines.length; li++) {
+                        const lineRects = lines[li];
+                        // For this line, could have bidi segments — merge their width
+                        const lineLeft = Math.min(...lineRects.map(r => r.left));
+                        const lineRight = Math.max(...lineRects.map(r => r.right));
+                        const lineTop = lineRects[0].top;
+                        const lineWidth = lineRight - lineLeft;
+                        
+                        const ly = this.r(lineTop - ref.top + ascent);
+                        let lx;
+                        if (isRTL) {
+                            lx = this.r(lineRight - ref.left);
+                        } else {
+                            lx = this.r(lineLeft - ref.left);
+                        }
+                        
+                        if (!remaining) continue;
+                        
+                        if (li === lines.length - 1) {
+                            // Last line: use all remaining
+                            tspans += `<tspan x="${lx}" y="${ly}">${this.escHtml(remaining)}</tspan>`;
                             remaining = '';
                         } else {
-                            // Binary search for the text that fits this rect width
-                            let lo = 0, hi = lineText.length;
+                            // Find how many chars fit
+                            let lo = 0, hi = remaining.length;
                             while (lo < hi) {
                                 const mid = Math.ceil((lo + hi) / 2);
-                                const w = ctx.measureText(lineText.substring(0, mid)).width;
-                                if (w <= rr.width) lo = mid;
+                                const w = ctx.measureText(remaining.substring(0, mid)).width;
+                                if (w <= lineWidth + 2) lo = mid;
                                 else hi = mid - 1;
                             }
-                            // Try to break at word boundary
                             let breakAt = lo;
-                            if (breakAt < lineText.length) {
-                                const spaceIdx = lineText.lastIndexOf(' ', breakAt);
-                                if (spaceIdx > 0) breakAt = spaceIdx;
+                            if (breakAt < remaining.length && breakAt > 0) {
+                                // Try word boundary (space)
+                                const spaceIdx = remaining.lastIndexOf(' ', breakAt);
+                                if (spaceIdx > 0) breakAt = spaceIdx + 1;
                             }
-                            const linePart = lineText.substring(0, breakAt).trim();
-                            remaining = lineText.substring(breakAt).trim();
+                            const linePart = remaining.substring(0, breakAt).trim();
+                            remaining = remaining.substring(breakAt).trim();
                             if (linePart) {
                                 tspans += `<tspan x="${lx}" y="${ly}">${this.escHtml(linePart)}</tspan>`;
                             }
                         }
                     }
+                    
+                    const firstRR = lines[0][0];
+                    const fy = this.r(firstRR.top - ref.top + ascent);
+                    let fx;
+                    if (isRTL) {
+                        fx = this.r(Math.max(...lines[0].map(r => r.right)) - ref.left);
+                    } else {
+                        fx = this.r(Math.min(...lines[0].map(r => r.left)) - ref.left);
+                    }
+                    const anchor = isRTL ? 'end' : 'start';
+                    svg += `<text x="${fx}" y="${fy}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}"${opAttr}>${tspans}</text>`;
                 }
-                const firstRR = rects[0];
-                const fy = this.r(firstRR.top - ref.top + ascent);
-                let fx;
-                if (isRTL) {
-                    fx = this.r(firstRR.right - ref.left);
-                } else {
-                    fx = this.r(firstRR.left - ref.left);
-                }
-                const anchor = isRTL ? 'end' : 'start';
-                svg += `<text x="${fx}" y="${fy}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}"${opAttr}>${tspans}</text>`;
             }
         }
         return svg;
