@@ -208,7 +208,7 @@ class FigmaSVGConverter {
                 content += this._renderSVGIcon(s, this.r(sr.left - this._ref.left), this.r(sr.top - this._ref.top), this.r(sr.width), this.r(sr.height), this._win.getComputedStyle(s));
             }
         } else {
-            // Background + border first
+            // Branch: background + border first, then process children
             content += this._renderBackgrounds(style, x, y, w, h, br);
             content += this._renderBorder(style, x, y, w, h, br);
 
@@ -221,6 +221,9 @@ class FigmaSVGConverter {
             if (el.tagName.toLowerCase() === 'img') {
                 content += this._renderImage(el, x, y, w, h, style, name);
             }
+
+            // Text that belongs to THIS element only (direct text nodes, not children's text)
+            content += this._renderDirectText(el, x, y, w, h);
 
             // Children (re-ordered by z-index)
             const childSVG = this._processChildren(el);
@@ -315,7 +318,42 @@ class FigmaSVGConverter {
         return svg;
     }
 
-    // ─── ACCURATE TEXT via Range API ───
+    // ─── Direct text only (not from children) for branch elements ───
+    _renderDirectText(el, elX, elY, elW, elH) {
+        let svg = '';
+        const doc = this._doc;
+        const win = this._win;
+        const ref = this._ref;
+        const cs = win.getComputedStyle(el);
+
+        // Only get TEXT_NODE children directly inside this element (not inside nested elements)
+        for (const node of el.childNodes) {
+            if (node.nodeType !== 3) continue;
+            const text = node.textContent;
+            if (!text.trim()) continue;
+
+            const range = doc.createRange();
+            range.selectNodeContents(node);
+            const rangeRects = range.getClientRects();
+            if (rangeRects.length > 0) {
+                for (let i = 0; i < rangeRects.length; i++) {
+                    const rr = rangeRects[i];
+                    if (rr.width < 0.5 || rr.height < 0.5) continue;
+                    const tx = this.r(rr.left - ref.left);
+                    const baseline = this.r(rr.top - ref.top + parseFloat(cs.fontSize) * 0.88);
+                    const fontSize = parseFloat(cs.fontSize) || 16;
+                    const fontFamily = cs.fontFamily.replace(/['"]/g, '');
+                    const fontWeight = cs.fontWeight;
+                    const direction = cs.direction || 'ltr';
+
+                    svg += `<text x="${tx}" y="${baseline}" fill="${cs.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}" direction="${direction}">${this.escHtml(text)}</text>`;
+                }
+            }
+        }
+        return svg;
+    }
+
+    // ─── ACCURATE TEXT via Range API (for leaf elements) ───
     _renderInlineTexts(el, elX, elY, elW, elH) {
         let svg = '';
         const doc = this._doc;
