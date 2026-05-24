@@ -37,8 +37,9 @@
             position: absolute;
             left: -9999px;
             top: -9999px;
-            visibility: hidden;
+            visibility: visible;
             pointer-events: none;
+            overflow: visible;
         }
 
         #render-container * {
@@ -241,6 +242,7 @@
             this.defsCounter = 0;
             this.layerCounter = 0;
             this.imagesQueue = [];
+            this._imageReplacements = [];
 
             // Render HTML in hidden container
             const rc = document.getElementById('render-container');
@@ -249,15 +251,31 @@
             // Wait for images and fonts to load
             await this.waitForResources(rc);
 
-            // Measure root
-            const root = rc.firstElementChild || rc;
+            // Measure root - use first child element
+            const root = rc.firstElementChild;
+            if (!root) {
+                throw new Error('No HTML content found');
+            }
             const rootRect = root.getBoundingClientRect();
 
             this.svgWidth = Math.ceil(rootRect.width);
             this.svgHeight = Math.ceil(rootRect.height);
 
-            // Process all nodes
-            let svgContent = this.processNode(rc, rootRect);
+            // Process root element and its children
+            let svgContent = this.processElement(root, rootRect);
+
+            // Also process any siblings of root (if multiple top-level elements)
+            let sibling = root.nextElementSibling;
+            while (sibling) {
+                svgContent += '\n' + this.processElement(sibling, rootRect);
+                // Expand SVG dimensions if sibling extends beyond
+                const sibRect = sibling.getBoundingClientRect();
+                const sibRight = sibRect.left - rootRect.left + sibRect.width;
+                const sibBottom = sibRect.top - rootRect.top + sibRect.height;
+                if (sibRight > this.svgWidth) this.svgWidth = Math.ceil(sibRight);
+                if (sibBottom > this.svgHeight) this.svgHeight = Math.ceil(sibBottom);
+                sibling = sibling.nextElementSibling;
+            }
 
             // Process queued images (async base64)
             await this.processImages();
@@ -287,91 +305,120 @@
         }
 
         // ------------------------------------------------------------------
-        // Process a single DOM node and its children
+        // Process a single DOM element and its children
         // ------------------------------------------------------------------
         processNode(node, rootRect) {
-            let parts = [];
+            return this.processElement(node, rootRect);
+        }
 
-            // Get child elements (not text nodes — we handle those per-element)
-            const children = Array.from(node.children || []);
+        processElement(el, rootRect) {
+            if (!this.isVisible(el)) return '';
 
-            for (const child of children) {
-                if (!this.isVisible(child)) continue;
+            const layerName = this.getLayerName(el);
+            const rect = el.getBoundingClientRect();
+            const styles = getComputedStyle(el);
 
-                const layerName = this.getLayerName(child);
-                const rect = child.getBoundingClientRect();
-                const styles = getComputedStyle(child);
+            // Position relative to root container
+            const x = this.round(rect.left - rootRect.left);
+            const y = this.round(rect.top - rootRect.top);
+            const w = this.round(rect.width);
+            const h = this.round(rect.height);
 
-                // Position relative to root container
-                const x = this.round(rect.left - rootRect.left);
-                const y = this.round(rect.top - rootRect.top);
-                const w = this.round(rect.width);
-                const h = this.round(rect.height);
+            // Skip zero-size elements
+            if (w < 0.5 && h < 0.5) return '';
 
-                // Skip zero-size elements
-                if (w < 0.5 && h < 0.5) continue;
+            let groupContent = '';
 
-                let groupContent = '';
+            // 1. Shadow filter (applied to background)
+            const shadowFilterId = this.createShadowFilter(styles, layerName);
 
-                // 1. Shadow filter (applied to background)
-                const shadowFilterId = this.createShadowFilter(styles, layerName);
+            // 2. Border radius values
+            const br = this.getBorderRadius(styles, w, h);
 
-                // 2. Border radius values
-                const br = this.getBorderRadius(styles, w, h);
+            // 3. Background (solid color, gradient, or image)
+            // Apply clip-path directly to background rect instead of separate clip
+            const hasOverflow = styles.overflow === 'hidden' || styles.overflow === 'clip';
+            const hasBorderRadius = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
+            
+            const bgSvg = this.createBackground(styles, x, y, w, h, br, shadowFilterId, hasOverflow && hasBorderRadius, layerName);
+            if (bgSvg) groupContent += bgSvg;
 
-                // 3. Overflow hidden → clipPath
-                const clipId = this.createClipPath(styles, x, y, w, h, br, layerName);
+            // 4. Border
+            const borderSvg = this.createBorder(styles, x, y, w, h, br, layerName);
+            if (borderSvg) groupContent += borderSvg;
 
-                // 4. Background (solid color, gradient, or image)
-                const bgSvg = this.createBackground(styles, x, y, w, h, br, shadowFilterId, clipId, layerName);
-                if (bgSvg) groupContent += bgSvg;
-
-                // 5. Border
-                const borderSvg = this.createBorder(styles, x, y, w, h, br, layerName);
-                if (borderSvg) groupContent += borderSvg;
-
-                // 6. SVG icons (inline SVG)
-                if (child.tagName.toLowerCase() === 'svg') {
-                    groupContent += this.createSVGIcon(child, x, y, w, h, styles);
-                }
-
-                // 7. IMG elements
-                if (child.tagName.toLowerCase() === 'img') {
-                    groupContent += this.createImageElement(child, x, y, w, h, styles, layerName);
-                }
-
-                // 8. Text content (direct text nodes only)
-                const directText = this.getDirectText(child);
-                if (directText.trim()) {
-                    groupContent += this.createText(directText, styles, x, y, w, h);
-                }
-
-                // 9. Opacity
-                const opacity = parseFloat(styles.opacity);
-                const opacityAttr = (opacity < 1 && opacity > 0) ? ` opacity="${opacity}"` : '';
-
-                // 10. Transform
-                const transform = this.getTransform(styles, child);
-
-                // 11. Recurse into children
-                const childContent = this.processNode(child, rootRect);
-                if (childContent.trim()) {
-                    groupContent += childContent;
-                }
-
-                if (groupContent.trim()) {
-                    const type = this.isContainer(child) ? 'Frame' : 'Group';
-                    parts.push(`<g id="${this.escapeAttr(layerName)}" data-type="${type}"${opacityAttr}${transform}>${groupContent}</g>`);
-                }
+            // 5. SVG icons (inline SVG)
+            if (el.tagName.toLowerCase() === 'svg') {
+                groupContent += this.createSVGIcon(el, x, y, w, h, styles);
             }
 
+            // 6. IMG elements
+            if (el.tagName.toLowerCase() === 'img') {
+                groupContent += this.createImageElement(el, x, y, w, h, styles, layerName);
+            }
+
+            // 7. Text content (direct text nodes only)
+            const directText = this.getDirectText(el);
+            if (directText.trim()) {
+                groupContent += this.createText(directText, styles, x, y, w, h);
+            }
+
+            // 8. Opacity
+            const opacity = parseFloat(styles.opacity);
+            const opacityAttr = (opacity < 1 && opacity > 0) ? ` opacity="${opacity}"` : '';
+
+            // 9. Transform
+            const transform = this.getTransform(styles, el);
+
+            // 10. Clip children if overflow:hidden
+            const clipChildren = hasOverflow;
+            
+            // 11. Recurse into children
+            const childContent = this.processChildren(el, rootRect);
+            
+            if (clipChildren && hasBorderRadius && childContent.trim()) {
+                // Wrap children in a clip group
+                const clipId = this.createOverflowClip(x, y, w, h, br);
+                groupContent += `<g clip-path="url(#${clipId})">${childContent}</g>`;
+            } else if (childContent.trim()) {
+                groupContent += childContent;
+            }
+
+            if (groupContent.trim()) {
+                const type = this.isContainer(el) ? 'Frame' : 'Group';
+                return `<g id="${this.escapeAttr(layerName)}" data-type="${type}"${opacityAttr}${transform}>${groupContent}</g>`;
+            }
+
+            return '';
+        }
+
+        processChildren(el, rootRect) {
+            let parts = [];
+            const children = Array.from(el.children || []);
+            // Sort by z-index (lower first)
+            children.sort((a, b) => {
+                const za = parseFloat(getComputedStyle(a).zIndex) || 0;
+                const zb = parseFloat(getComputedStyle(b).zIndex) || 0;
+                return za - zb;
+            });
+            for (const child of children) {
+                const svg = this.processElement(child, rootRect);
+                if (svg.trim()) parts.push(svg);
+            }
             return parts.join('\n');
+        }
+
+        createOverflowClip(x, y, w, h, br) {
+            const id = `overflow-${this.defsCounter++}`;
+            const d = this.roundedRectPath(x, y, w, h, br);
+            this.defs.push(`<clipPath id="${id}"><path d="${d}"/></clipPath>`);
+            return id;
         }
 
         // ------------------------------------------------------------------
         // Background (solid, gradient, image)
         // ------------------------------------------------------------------
-        createBackground(styles, x, y, w, h, br, shadowFilterId, clipId, layerName) {
+        createBackground(styles, x, y, w, h, br, shadowFilterId, needsClip, layerName) {
             const bgImage = styles.backgroundImage;
             const bgColor = styles.backgroundColor;
             const hasGradient = bgImage && bgImage !== 'none';
@@ -379,20 +426,17 @@
 
             let svg = '';
             let filterAttr = shadowFilterId ? ` filter="url(#${shadowFilterId})"` : '';
-            let clipAttr = clipId ? ` clip-path="url(#${clipId})"` : '';
 
             if (hasGradient) {
                 const gradientId = this.createGradient(bgImage, w, h, layerName);
                 if (gradientId) {
-                    svg += this.createRect(x, y, w, h, br, `url(#${gradientId})`, filterAttr, clipAttr);
+                    svg += this.createRect(x, y, w, h, br, `url(#${gradientId})`, filterAttr, '');
                 }
             } else if (hasBgColor) {
-                svg += this.createRect(x, y, w, h, br, bgColor, filterAttr, clipAttr);
-            } else if (shadowFilterId || clipId) {
-                // Element has shadow or clip but no bg — create transparent bg for shadow
-                if (shadowFilterId) {
-                    svg += this.createRect(x, y, w, h, br, bgColor || 'transparent', filterAttr, clipAttr);
-                }
+                svg += this.createRect(x, y, w, h, br, bgColor, filterAttr, '');
+            } else if (shadowFilterId) {
+                // Element has shadow but no bg — need bg rect for shadow to apply
+                svg += this.createRect(x, y, w, h, br, '#000000', filterAttr, '');
             }
 
             return svg;
