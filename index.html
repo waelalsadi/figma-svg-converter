@@ -236,20 +236,18 @@ class FigmaSVGConverter {
         const ref = this._ref;
 
         for (const node of el.childNodes) {
-            if (node.nodeType !== 3) continue; // only text nodes
+            if (node.nodeType !== 3) continue;
             const text = node.textContent;
             if (!text.trim()) continue;
-            if (this._renderedTextNodes.has(node)) continue; // skip already-rendered
-            this._renderedTextNodes.add(node);
-
-            // Use the PARENT element style for text that's directly in this element
+            // This text node is a DIRECT child of el — use el's computed style
             const cs = win.getComputedStyle(el);
             const range = doc.createRange();
             range.selectNodeContents(node);
             const rects = range.getClientRects();
 
-            for (let i = 0; i < rects.length; i++) {
-                const rr = rects[i];
+            if (rects.length <= 1) {
+                // Simple: one rect = one text element
+                const rr = rects[0];
                 if (rr.width < 0.5 || rr.height < 0.5) continue;
                 const fontSize = parseFloat(cs.fontSize) || 16;
                 const fontFamily = cs.fontFamily.replace(/['"]/g, '');
@@ -259,6 +257,20 @@ class FigmaSVGConverter {
 
                 const tx = this.r(rr.left - ref.left);
                 const baseline = this.r(rr.top - ref.top + fontSize * 0.88);
+                const opAttr = fc.opacity < 1 ? ` opacity="${fc.opacity}"` : '';
+                svg += `<text x="${tx}" y="${baseline}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}" direction="${direction}"${opAttr}>${this.escHtml(text)}</text>`;
+            } else {
+                // Multi-rect (bidi text, line wrapping): render as ONE text element at the bounding box
+                // Use the bounding rect of the full range
+                const bRect = range.getBoundingClientRect();
+                const fontSize = parseFloat(cs.fontSize) || 16;
+                const fontFamily = cs.fontFamily.replace(/['"]/g, '');
+                const fontWeight = cs.fontWeight;
+                const direction = cs.direction || 'ltr';
+                const fc = this._formatColor(cs.color);
+
+                const tx = this.r(bRect.left - ref.left);
+                const baseline = this.r(bRect.top - ref.top + fontSize * 0.88);
                 const opAttr = fc.opacity < 1 ? ` opacity="${fc.opacity}"` : '';
                 svg += `<text x="${tx}" y="${baseline}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}" direction="${direction}"${opAttr}>${this.escHtml(text)}</text>`;
             }
