@@ -233,6 +233,10 @@ class FigmaSVGConverter {
         content += this._renderBackgrounds(style, x, y, w, h, br);
         content += this._renderBorder(style, x, y, w, h, br);
 
+        // Pseudo-elements (::before, ::after)
+        content += this._renderPseudo(el, '::before', x, y, w, h);
+        content += this._renderPseudo(el, '::after', x, y, w, h);
+
         if (tag === 'svg') content += this._renderSVGIcon(el, x, y, w, h, style);
         if (tag === 'img') content += this._renderImage(el, x, y, w, h, style, name);
 
@@ -387,6 +391,96 @@ class FigmaSVGConverter {
             }
         }
         return svg;
+    }
+
+    // ─── Pseudo-elements (::before, ::after) ───
+    _renderPseudo(el, pseudo, x, y, w, h) {
+        try {
+            const cs = this._win.getComputedStyle(el, pseudo);
+            if (!cs) return '';
+            const content = cs.content;
+            // Pseudo must have content (even if just empty string from content:'')
+            if (!content || content === 'none' || content === 'normal') return '';
+            
+            const bgImage = cs.backgroundImage;
+            const bgColor = cs.backgroundColor;
+            const hasBg = (bgImage && bgImage !== 'none') || 
+                         (bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent');
+            const hasContent = content && content !== 'none' && content !== 'normal' && content !== '""' && content !== "''";
+            
+            if (!hasBg && !hasContent) return '';
+            
+            // Pseudo-elements don't have getBoundingClientRect
+            // Use the parent's rect (position:absolute pseudos are relative to parent)
+            const pr = el.getBoundingClientRect();
+            const px = this.r(pr.left - this._ref.left);
+            const py = this.r(pr.top - this._ref.top);
+            const pw = this.r(pr.width);
+            const ph = this.r(pr.height);
+            
+            // Try to compute pseudo's own size from computed style
+            let pW = parseFloat(cs.width) || pw;
+            let pH = parseFloat(cs.height) || ph;
+            let pX = px, pY = py;
+            
+            // If position:absolute, compute offset from parent
+            const pos = cs.position;
+            if (pos === 'absolute') {
+                const top = parseFloat(cs.top);
+                const left = parseFloat(cs.left);
+                const right = parseFloat(cs.right);
+                const bottom = parseFloat(cs.bottom);
+                if (!isNaN(top)) pY = this.r(py + top);
+                if (!isNaN(left)) pX = this.r(px + (this._win.getComputedStyle(el).direction === 'rtl' ? pw - pW - left : left));
+                if (!isNaN(right) && isNaN(left) && this._win.getComputedStyle(el).direction === 'rtl') pX = this.r(px + right);
+            }
+            
+            let svg = '';
+            const name = pseudo === '::before' ? 'Before' : 'After';
+            
+            // Render background
+            if (hasBg) {
+                const br = this._borderRadius(cs, pW, pH);
+                const bgColorVal = bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent'
+                    ? this._formatColor(bgColor) : null;
+                if (bgColorVal) {
+                    svg += this._rect(pX, pY, pW, pH, br, bgColorVal.color, bgColorVal.opacity < 1 ? ` opacity="${bgColorVal.opacity}"` : '');
+                }
+                if (bgImage && bgImage !== 'none') {
+                    const layers = this._splitBGImages(bgImage);
+                    for (const layer of layers) {
+                        const gradId = this._createGradientFromLayer(layer, pX, pY, pW, pH);
+                        if (gradId) svg += this._rect(pX, pY, pW, pH, br, `url(#${gradId})`);
+                    }
+                }
+            }
+            
+            // Render text content
+            if (hasContent) {
+                const text = content.replace(/^["']|["']$/g, '');
+                if (text.trim()) {
+                    const fontSize = parseFloat(cs.fontSize) || 16;
+                    const fontWeight = cs.fontWeight;
+                    const fc = this._formatColor(cs.color);
+                    const fontFamily = cs.fontFamily.split(',').map(f => {
+                        const t = f.trim().replace(/['"]/g, '');
+                        return t.includes(' ') ? `'${t}'` : t;
+                    }).join(', ');
+                    const canvas = this._getTextCanvas();
+                    const ctx = canvas.getContext('2d');
+                    ctx.font = `${fontWeight} ${fontSize}px ${fontFamily}`;
+                    const ascent = ctx.measureText(text).fontBoundingBoxAscent || fontSize * 0.8;
+                    const isRTL = cs.direction === 'rtl';
+                    const anchor = isRTL ? 'end' : 'start';
+                    const tx = isRTL ? this.r(pX + pW) : this.r(pX);
+                    const ty = this.r(pY + ascent);
+                    svg += `<text x="${tx}" y="${ty}" text-anchor="${anchor}" fill="${fc.color}" font-family="${fontFamily}" font-size="${this.r(fontSize)}" font-weight="${fontWeight}">${this.escHtml(text)}</text>`;
+                }
+            }
+            
+            if (svg) return `<g id="${name}-${++this.layerCounter}" data-type="Group">${svg}</g>`;
+            return '';
+        } catch(e) { return ''; }
     }
 
     _getTextCanvas() {
