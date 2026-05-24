@@ -1187,7 +1187,9 @@ ${finalContent}
 
             // Count layers
             const layerCount = (svg.match(/<g id="/g) || []).length;
-            updateBadge(layerCount, `${svgW}×${svgH}`);
+            const finalW = converter.svgWidth || 0;
+            const finalH = converter.svgHeight || 0;
+            updateBadge(layerCount, `${finalW}×${finalH}`);
 
             // Show action buttons
             document.getElementById('btn-copy').classList.remove('hidden');
