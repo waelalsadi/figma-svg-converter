@@ -6,144 +6,51 @@
     <title>محول HTML إلى SVG لـ Figma</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;600;700&display=swap');
-
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;500;600;700&display=swap');
         * { box-sizing: border-box; }
-        body { font-family: 'Cairo', 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; overflow: hidden; height: 100vh; }
-
+        body { font-family: 'Cairo', sans-serif; background: #0f172a; color: #e2e8f0; overflow: hidden; height: 100vh; margin: 0; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: #1e293b; border-radius: 3px; }
+        ::-webkit-scrollbar-track { background: #1e293b; }
         ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
-        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
-
-        .editor-area {
-            font-family: 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
-            tab-size: 2;
-            line-height: 1.6;
-        }
-
+        .editor-area { font-family: 'Fira Code', 'Consolas', monospace; tab-size: 2; line-height: 1.5; }
         .preview-frame {
-            background-image: 
-                linear-gradient(45deg, #1e293b 25%, transparent 25%),
-                linear-gradient(-45deg, #1e293b 25%, transparent 25%),
-                linear-gradient(45deg, transparent 75%, #1e293b 75%),
-                linear-gradient(-45deg, transparent 75%, #1e293b 75%);
-            background-size: 16px 16px;
-            background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
-            background-color: #0f172a;
+            background-image: linear-gradient(45deg, #1e293b 25%, transparent 25%), linear-gradient(-45deg, #1e293b 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #1e293b 75%), linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+            background-size: 16px 16px; background-position: 0 0, 0 8px, 8px -8px, -8px 0px; background-color: #0f172a;
         }
-
-        /* Render container - VISIBLE but offscreen with FIXED dimensions */
-        #render-container {
-            position: absolute;
-            left: -9999px;
-            top: -9999px;
-            width: 1440px;
-            min-height: 1024px;
-            visibility: visible;
-            pointer-events: none;
-            overflow: visible;
-            background: white;
-        }
-
-        #render-container * {
-            pointer-events: none !important;
-        }
-
-        .status-pill {
-            transition: all 0.3s ease;
-        }
-
-        .btn-convert {
-            background: linear-gradient(135deg, #6366f1, #8b5cf6);
-            transition: all 0.2s ease;
-        }
-        .btn-convert:hover {
-            background: linear-gradient(135deg, #4f46e5, #7c3aed);
-            transform: translateY(-1px);
-            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
-        }
-        .btn-convert:active { transform: translateY(0); }
-
-        .btn-secondary {
-            background: #1e293b;
-            border: 1px solid #334155;
-            transition: all 0.2s ease;
-        }
-        .btn-secondary:hover {
-            background: #334155;
-            border-color: #475569;
-        }
-
-        .panel-header {
-            background: #1e293b;
-            border-bottom: 1px solid #334155;
-        }
-
-        .tab-active {
-            background: #6366f1;
-            color: white;
-        }
-        .tab-inactive {
-            background: transparent;
-            color: #94a3b8;
-        }
-        .tab-inactive:hover {
-            color: #e2e8f0;
-            background: #334155;
-        }
-
-        .svg-output {
-            font-family: 'Fira Code', 'Consolas', monospace;
-            font-size: 12px;
-            line-height: 1.5;
-            color: #a5f3fc;
-        }
-
-        .progress-bar {
-            height: 3px;
-        }
+        #render-iframe { position: absolute; left: -9999px; top: -9999px; border: none; opacity: 0; pointer-events: none; }
+        .btn-convert { background: linear-gradient(135deg, #6366f1, #8b5cf6); transition: all 0.2s; }
+        .btn-convert:hover { background: linear-gradient(135deg, #4f46e5, #7c3aed); transform: translateY(-1px); box-shadow: 0 4px 15px rgba(99,102,241,0.4); }
+        .btn-secondary { background: #1e293b; border: 1px solid #334155; transition: all 0.2s; }
+        .btn-secondary:hover { background: #334155; border-color: #475569; }
+        .panel-header { background: #1e293b; border-bottom: 1px solid #334155; }
+        .tab-active { background: #6366f1; color: white; }
+        .tab-inactive { background: transparent; color: #94a3b8; }
+        .tab-inactive:hover { color: #e2e8f0; background: #334155; }
     </style>
 </head>
-<body class="min-h-screen flex flex-col">
-
-    <!-- Header -->
-    <div class="bg-slate-900/80 backdrop-blur border-b border-slate-700 px-4 py-3 flex items-center justify-between flex-shrink-0">
+<body class="flex flex-col h-screen">
+    <div class="bg-slate-900/80 backdrop-blur border-b border-slate-700 px-4 py-2.5 flex items-center justify-between flex-shrink-0">
         <div class="flex items-center gap-3">
-            <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-indigo-400"><path d="M12 3v18"></path><rect x="3" y="8" width="18" height="8" rx="1"></rect><path d="M3 12h18"></path></svg>
-            <h1 class="text-lg font-bold text-white">محرك Figma المتقدم</h1>
-            <span class="text-xs text-slate-500">v11.0</span>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" class="text-indigo-400"><path d="M12 3v18"/><rect x="3" y="8" width="18" height="8" rx="1"/><path d="M3 12h18"/></svg>
+            <h1 class="text-base font-bold text-white">محرك Figma المتقدم</h1>
+            <span class="text-xs text-slate-500 bg-slate-800 px-1.5 py-0.5 rounded">v12</span>
         </div>
         <div class="flex items-center gap-3">
-            <div id="status-pill" class="status-pill text-xs px-3 py-1 rounded-full border bg-slate-800 text-slate-400 border-slate-700">جاهز</div>
-            <div id="layer-count" class="text-xs text-slate-500">0 طبقة</div>
-            <div id="size-badge" class="text-xs text-slate-500">—</div>
+            <span id="status-pill" class="text-xs px-2.5 py-0.5 rounded-full border bg-slate-800 text-slate-400 border-slate-700">جاهز</span>
+            <span id="layer-count" class="text-xs text-slate-500">0 طبقة</span>
+            <span id="size-badge" class="text-xs text-slate-500">—</span>
         </div>
     </div>
-
-    <!-- Progress bar -->
-    <div id="progress-bar" class="progress-bar bg-slate-800 hidden flex-shrink-0">
-        <div id="progress-fill" class="h-full bg-indigo-500 transition-all duration-300" style="width: 0%"></div>
-    </div>
-
-    <!-- Main -->
-    <div class="flex-1 flex overflow-hidden">
-
-        <!-- Left Panel: Editor -->
+    <div id="progress-bar" class="h-0.5 bg-slate-800 hidden flex-shrink-0"><div id="progress-fill" class="h-full bg-indigo-500 transition-all duration-300" style="width:0%"></div></div>
+    <div class="flex-1 flex overflow-hidden min-h-0">
         <div class="w-1/2 flex flex-col border-l border-slate-700 flex-shrink-0">
             <div class="panel-header px-4 py-2 flex justify-between items-center">
                 <span class="text-sm font-semibold text-slate-300">كود HTML</span>
-                <div class="flex gap-2">
-                    <button onclick="loadSample()" class="btn-secondary text-xs px-3 py-1 rounded text-slate-300">نموذج</button>
-                    <button onclick="clearEditor()" class="btn-secondary text-xs px-3 py-1 rounded text-slate-300">مسح</button>
-                </div>
+                <div class="flex gap-2"><button onclick="loadSample()" class="btn-secondary text-xs px-3 py-1 rounded text-slate-300">نموذج</button><button onclick="clearEditor()" class="btn-secondary text-xs px-3 py-1 rounded text-slate-300">مسح</button></div>
             </div>
-            <textarea id="html-input" class="editor-area flex-1 w-full p-4 bg-slate-950 text-slate-100 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 border-none" dir="ltr" spellcheck="false" placeholder="الصق كود HTML هنا..."></textarea>
+            <textarea id="html-input" class="editor-area flex-1 w-full p-3 bg-slate-950 text-slate-100 text-xs resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500 border-none" dir="ltr" spellcheck="false" placeholder="الصق كود HTML هنا..."></textarea>
         </div>
-
-        <!-- Right Panel: Preview & Output -->
         <div class="w-1/2 flex flex-col overflow-hidden">
-            <!-- Tabs -->
             <div class="panel-header px-4 py-2 flex justify-between items-center">
                 <div class="flex gap-1">
                     <button id="tab-preview" onclick="switchTab('preview')" class="tab-active px-3 py-1 rounded text-xs font-semibold transition">معاينة</button>
@@ -152,1267 +59,705 @@
                 </div>
                 <button onclick="convertNow()" class="btn-convert text-white text-xs px-4 py-1.5 rounded-lg font-semibold">تحويل إلى SVG</button>
             </div>
-
-            <!-- Preview Panel -->
-            <div id="panel-preview" class="flex-1 overflow-auto preview-frame flex items-center justify-center p-6">
-                <div id="preview-placeholder" class="text-center text-slate-600">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" class="mx-auto mb-3 opacity-50"><rect x="3" y="3" width="18" height="18" rx="2"></rect><path d="M3 9h18"></path></svg>
-                    <p class="text-sm">أدخل كود HTML واضغط "تحويل"</p>
-                </div>
+            <div id="panel-preview" class="flex-1 overflow-auto preview-frame flex items-center justify-center p-4">
+                <div id="preview-placeholder" class="text-center text-slate-600"><p class="text-sm">أدخل كود HTML واضغط "تحويل"</p></div>
                 <div id="preview-content" class="hidden max-w-full"></div>
             </div>
-
-            <!-- SVG Code Panel -->
-            <div id="panel-svg" class="flex-1 overflow-auto hidden">
-                <pre id="svg-code" class="svg-output p-4 m-0 whitespace-pre-wrap break-all bg-slate-950 min-h-full"></pre>
-            </div>
-
-            <!-- Layers Panel -->
-            <div id="panel-layers" class="flex-1 overflow-auto hidden bg-slate-950 p-4">
-                <div id="layers-tree" class="text-sm font-mono text-slate-300"></div>
-            </div>
-
-            <!-- Action buttons -->
-            <div class="bg-slate-900 border-t border-slate-700 px-4 py-2 flex items-center gap-2 flex-shrink-0">
-                <button id="btn-copy" onclick="copySVG()" class="hidden btn-secondary text-xs px-3 py-1.5 rounded text-slate-300 flex items-center gap-1">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"></rect><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"></path></svg>
-                    نسخ
-                </button>
-                <button id="btn-download" onclick="downloadSVG()" class="hidden btn-secondary text-xs px-3 py-1.5 rounded text-slate-300 flex items-center gap-1">
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-                    تحميل
-                </button>
+            <div id="panel-svg" class="flex-1 overflow-auto hidden"><pre id="svg-code" class="text-xs p-3 m-0 whitespace-pre-wrap break-all bg-slate-950 text-cyan-300 min-h-full font-mono"></pre></div>
+            <div id="panel-layers" class="flex-1 overflow-auto hidden bg-slate-950 p-3"><div id="layers-tree" class="text-xs font-mono text-slate-300"></div></div>
+            <div class="bg-slate-900 border-t border-slate-700 px-4 py-1.5 flex items-center gap-2 flex-shrink-0">
+                <button id="btn-copy" onclick="copySVG()" class="hidden btn-secondary text-xs px-3 py-1 rounded text-slate-300">نسخ</button>
+                <button id="btn-download" onclick="downloadSVG()" class="hidden btn-secondary text-xs px-3 py-1 rounded text-slate-300">تحميل</button>
             </div>
         </div>
     </div>
+    <iframe id="render-iframe" width="1440" height="1024"></iframe>
 
-    <!-- Render container -->
-    <div id="render-container"></div>
+<script>
+class FigmaSVGConverter {
+    constructor() {
+        this.defs = new Set();
+        this.defsList = [];
+        this.defsCounter = 0;
+        this.layerCounter = 0;
+        this.svgWidth = 0;
+        this.svgHeight = 0;
+        this._imageQueue = [];
+        this._imageReplacements = [];
+        this.viewportWidth = 1440;
+        this.viewportHeight = 1024;
+        this.precision = 2;
+    }
 
-    <script>
-    // ===================================================================
-    // HTML → SVG Conversion Engine v11 (Figma-Optimized)
-    // Full HTML document support: extracts <style>, <link>, resolves CSS vars
-    // ===================================================================
+    // ─── Main Convert ───
+    async convert(htmlString) {
+        this.defs = new Set();
+        this.defsList = [];
+        this.defsCounter = 0;
+        this.layerCounter = 0;
+        this._imageQueue = [];
+        this._imageReplacements = [];
 
-    class FigmaSVGConverter {
-        constructor() {
-            this.defs = [];
-            this.defsCounter = 0;
-            this.layerCounter = 0;
-            this.svgWidth = 0;
-            this.svgHeight = 0;
-            this.imagesQueue = [];
-            this._imageReplacements = [];
-            this._injectedStyles = [];
-            this._injectedLinks = [];
-            this.convertOptions = {
-                embedImages: true,
-                scale: 1,
-                precision: 2,
-                viewportWidth: 1440,
-                viewportHeight: 1024,
-            };
+        const iframe = document.getElementById('render-iframe');
+        iframe.width = this.viewportWidth;
+        iframe.height = this.viewportHeight;
+
+        // Write full HTML into iframe
+        await new Promise((resolve, reject) => {
+            iframe.onload = resolve;
+            iframe.onerror = reject;
+            iframe.srcdoc = htmlString;
+        });
+
+        const doc = iframe.contentDocument;
+        const win = iframe.contentWindow;
+
+        // Wait for fonts
+        if (doc.fonts && doc.fonts.ready) await doc.fonts.ready;
+        await new Promise(r => setTimeout(r, 100));
+
+        // Wait for images
+        const images = doc.querySelectorAll('img');
+        await Promise.all(Array.from(images).map(img => new Promise(r => {
+            if (img.complete && img.naturalWidth > 0) return r();
+            img.onload = r; img.onerror = r; setTimeout(r, 8000);
+        })));
+
+        // Reflow
+        doc.body.offsetHeight;
+
+        // Measure extent
+        const body = doc.body || doc.documentElement;
+        const bodyRect = body.getBoundingClientRect();
+        let minX = bodyRect.left, minY = bodyRect.top, maxX = bodyRect.right, maxY = bodyRect.bottom;
+        body.querySelectorAll('*').forEach(el => {
+            const r = el.getBoundingClientRect();
+            if (r.width > 0 || r.height > 0) {
+                if (r.left < minX) minX = r.left;
+                if (r.top < minY) minY = r.top;
+                if (r.right > maxX) maxX = r.right;
+                if (r.bottom > maxY) maxY = r.bottom;
+            }
+        });
+
+        this.svgWidth = Math.ceil(maxX - Math.min(minX, 0));
+        this.svgHeight = Math.ceil(maxY - Math.min(minY, 0));
+        const offsetX = Math.min(minX, 0);
+        const offsetY = Math.min(minY, 0);
+        const refRect = { left: offsetX, top: offsetY, width: this.svgWidth, height: this.svgHeight };
+
+        // Process all body children
+        let svgContent = '';
+        for (const child of body.children) {
+            svgContent += this.processElement(child, refRect, win);
         }
 
-        // ------------------------------------------------------------------
-        // Parse full HTML document — extract <style>, <link>, <body>
-        // ------------------------------------------------------------------
-        parseHTMLDocument(htmlString) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(htmlString, 'text/html');
+        // Process queued images
+        await this._processImages();
 
-            // Extract all <style> blocks
-            const styles = Array.from(doc.querySelectorAll('style')).map(s => s.textContent);
+        return this._buildSVG(svgContent);
+    }
 
-            // Extract all <link> tags (fonts etc.)
-            const links = Array.from(doc.querySelectorAll('link[rel="stylesheet"], link[rel="preconnect"]'))
-                .map(l => l.outerHTML);
+    // ─── Process Element ───
+    processElement(el, ref, win) {
+        if (!el || el.nodeType !== 1) return '';
+        const style = win.getComputedStyle(el);
+        if (style.display === 'none') return '';
+        if (parseFloat(style.opacity) === 0) return '';
+        if (el.classList && el.classList.contains('sr-only')) return '';
 
-            // Extract body content (or full document if no body)
-            const body = doc.body || doc.documentElement;
-            const bodyContent = body.innerHTML;
+        const rect = el.getBoundingClientRect();
+        let x = this.r(rect.left - ref.left);
+        let y = this.r(rect.top - ref.top);
+        let w = this.r(rect.width);
+        let h = this.r(rect.height);
 
-            // Extract :root CSS variables
-            const rootVars = styles.join('\n').match(/:root\s*\{([^}]*)\}/g);
-
-            return { styles, links, bodyContent, rootVars };
-        }
-
-        // ------------------------------------------------------------------
-        // Inject extracted styles/links into the live document
-        // ------------------------------------------------------------------
-        injectResources(parsed) {
-            this.cleanupResources();
-
-            // Inject <link> tags into <head>
-            for (const linkHTML of parsed.links) {
-                const div = document.createElement('div');
-                div.innerHTML = linkHTML;
-                const linkEl = div.firstElementChild;
-                if (linkEl && linkEl.tagName === 'LINK') {
-                    // Only inject stylesheet links (skip preconnect)
-                    if (linkEl.rel === 'stylesheet') {
-                        document.head.appendChild(linkEl);
-                        this._injectedLinks.push(linkEl);
-                    }
-                }
-            }
-
-            // Inject <style> blocks
-            for (const css of parsed.styles) {
-                const styleEl = document.createElement('style');
-                styleEl.textContent = css;
-                document.head.appendChild(styleEl);
-                this._injectedStyles.push(styleEl);
-            }
-        }
-
-        cleanupResources() {
-            for (const s of this._injectedStyles) { try { s.remove(); } catch(e){} }
-            for (const l of this._injectedLinks) { try { l.remove(); } catch(e){} }
-            this._injectedStyles = [];
-            this._injectedLinks = [];
-        }
-
-        // ------------------------------------------------------------------
-        // Main Entry Point
-        // ------------------------------------------------------------------
-        async convert(htmlString) {
-            this.defs = [];
-            this.defsCounter = 0;
-            this.layerCounter = 0;
-            this.imagesQueue = [];
-            this._imageReplacements = [];
-
-            const rc = document.getElementById('render-container');
-
-            // Detect if it's a full HTML document
-            const isFullDoc = /<!DOCTYPE|<html/i.test(htmlString);
-
-            let bodyContent = htmlString;
-
-            if (isFullDoc) {
-                const parsed = this.parseHTMLDocument(htmlString);
-                this.injectResources(parsed);
-                bodyContent = parsed.bodyContent;
-            }
-
-            // Set render container dimensions and content
-            rc.style.width = this.convertOptions.viewportWidth + 'px';
-            rc.style.minHeight = this.convertOptions.viewportHeight + 'px';
-            rc.innerHTML = bodyContent;
-
-            // Wait for resources (images + fonts)
-            await this.waitForResources(rc);
-
-            // Force a reflow
-            rc.offsetHeight;
-
-            // Wait for fonts to actually render
-            if (document.fonts && document.fonts.ready) {
-                await document.fonts.ready;
-                // Extra delay for font rendering
-                await new Promise(r => setTimeout(r, 200));
-            }
-
-            // Measure root
-            const root = rc.firstElementChild;
-            if (!root) {
-                throw new Error('No HTML content found');
-            }
-
-            // Find the actual bounding box of all content
-            const rootRect = root.getBoundingClientRect();
-
-            // Also measure the full extent of all children
-            let minX = rootRect.left, minY = rootRect.top;
-            let maxX = rootRect.right, maxY = rootRect.bottom;
-            const allEls = rc.querySelectorAll('*');
-            for (const el of allEls) {
-                const r = el.getBoundingClientRect();
-                if (r.width > 0 || r.height > 0) {
-                    if (r.left < minX) minX = r.left;
-                    if (r.top < minY) minY = r.top;
-                    if (r.right > maxX) maxX = r.right;
-                    if (r.bottom > maxY) maxY = r.bottom;
-                }
-            }
-
-            this.svgWidth = Math.ceil(maxX - minX);
-            this.svgHeight = Math.ceil(maxY - minY);
-
-            // Use minX/minY as the reference point
-            const refRect = { left: minX, top: minY, width: this.svgWidth, height: this.svgHeight };
-
-            // Process root element and its children
-            let svgContent = this.processElement(root, refRect);
-
-            // Process siblings
-            let sibling = root.nextElementSibling;
-            while (sibling) {
-                svgContent += '\n' + this.processElement(sibling, refRect);
-                sibling = sibling.nextElementSibling;
-            }
-
-            // Process queued images
-            await this.processImages();
-
-            // Cleanup injected resources
-            this.cleanupResources();
-
-            // Build final SVG
-            return this.buildSVG(svgContent);
-        }
-
-        // ------------------------------------------------------------------
-        // Wait for resources
-        // ------------------------------------------------------------------
-        async waitForResources(container) {
-            const images = container.querySelectorAll('img');
-            const fontPromises = document.fonts ? document.fonts.ready : Promise.resolve();
-
-            const imgPromises = Array.from(images).map(img => {
-                return new Promise((resolve) => {
-                    if (img.complete && img.naturalWidth > 0) { resolve(); return; }
-                    img.onload = resolve;
-                    img.onerror = resolve;
-                    setTimeout(resolve, 5000);
-                });
+        if (w < 0.5 && h < 0.5) {
+            const hasKids = Array.from(el.children).some(c => {
+                const cr = c.getBoundingClientRect();
+                return cr.width > 0 || cr.height > 0;
             });
-
-            await Promise.all([fontPromises, ...imgPromises]);
+            if (!hasKids) return '';
         }
 
-        // ------------------------------------------------------------------
-        // Process a single DOM element and its children
-        // ------------------------------------------------------------------
-        processElement(el, rootRect) {
-            if (!this.isVisible(el)) return '';
+        const name = this._layerName(el);
+        const br = this._borderRadius(style, w, h);
+        let content = '';
 
-            const layerName = this.getLayerName(el);
-            const rect = el.getBoundingClientRect();
-            const styles = getComputedStyle(el);
+        // 1. Background layers (color + each gradient)
+        content += this._renderBackgrounds(style, x, y, w, h, br, name);
 
-            const x = this.round(rect.left - rootRect.left);
-            const y = this.round(rect.top - rootRect.top);
-            const w = this.round(rect.width);
-            const h = this.round(rect.height);
+        // 2. Border
+        content += this._renderBorder(style, x, y, w, h, br);
 
-            // Skip zero-size elements (but keep containers that have visible children)
-            if (w < 0.5 && h < 0.5) {
-                // Check if this is a container with positioned children
-                const hasVisibleChild = Array.from(el.children || []).some(child => {
-                    const cr = child.getBoundingClientRect();
-                    return cr.width > 0 || cr.height > 0;
-                });
-                if (!hasVisibleChild) return '';
-            }
-
-            let groupContent = '';
-
-            // 1. Shadow filter
-            const shadowFilterId = this.createShadowFilter(styles, layerName);
-
-            // 2. Border radius
-            const br = this.getBorderRadius(styles, w, h);
-
-            // 3. Background
-            const hasOverflow = styles.overflow === 'hidden' || styles.overflow === 'clip';
-            const hasBorderRadius = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
-
-            const bgSvg = this.createBackground(styles, x, y, w, h, br, shadowFilterId, layerName);
-            if (bgSvg) groupContent += bgSvg;
-
-            // 4. Border
-            const borderSvg = this.createBorder(styles, x, y, w, h, br, layerName);
-            if (borderSvg) groupContent += borderSvg;
-
-            // 5. SVG icons
-            if (el.tagName.toLowerCase() === 'svg') {
-                groupContent += this.createSVGIcon(el, x, y, w, h, styles);
-            }
-
-            // 6. IMG elements
-            if (el.tagName.toLowerCase() === 'img') {
-                groupContent += this.createImageElement(el, x, y, w, h, styles, layerName);
-            }
-
-            // 7. Text
-            const directText = this.getDirectText(el);
-            if (directText.trim()) {
-                groupContent += this.createText(directText, styles, x, y, w, h);
-            }
-
-            // 8. Opacity
-            const opacity = parseFloat(styles.opacity);
-            const opacityAttr = (opacity < 1 && opacity > 0) ? ` opacity="${opacity}"` : '';
-
-            // 9. Transform
-            const transform = this.getTransform(styles, el);
-
-            // 10. Children
-            const childContent = this.processChildren(el, rootRect);
-
-            if (hasOverflow && hasBorderRadius && childContent.trim()) {
-                const clipId = this.createOverflowClip(x, y, w, h, br);
-                groupContent += `<g clip-path="url(#${clipId})">${childContent}</g>`;
-            } else if (childContent.trim()) {
-                groupContent += childContent;
-            }
-
-            if (groupContent.trim()) {
-                const type = this.isContainer(el) ? 'Frame' : 'Group';
-                return `<g id="${this.escapeAttr(layerName)}" data-type="${type}"${opacityAttr}${transform}>${groupContent}</g>`;
-            }
-
-            return '';
+        // 3. SVG element
+        if (el.tagName.toLowerCase() === 'svg') {
+            content += this._renderSVGIcon(el, x, y, w, h, style);
         }
 
-        processChildren(el, rootRect) {
-            let parts = [];
-            const children = Array.from(el.children || []);
-            children.sort((a, b) => {
-                const za = parseFloat(getComputedStyle(a).zIndex) || 0;
-                const zb = parseFloat(getComputedStyle(b).zIndex) || 0;
-                return za - zb;
-            });
-            for (const child of children) {
-                const svg = this.processElement(child, rootRect);
-                if (svg.trim()) parts.push(svg);
-            }
-            return parts.join('\n');
+        // 4. IMG element
+        if (el.tagName.toLowerCase() === 'img') {
+            content += this._renderImage(el, x, y, w, h, style, name);
         }
 
-        createOverflowClip(x, y, w, h, br) {
-            const id = `overflow-${this.defsCounter++}`;
-            const d = this.roundedRectPath(x, y, w, h, br);
-            this.defs.push(`<clipPath id="${id}"><path d="${d}"/></clipPath>`);
-            return id;
+        // 5. Text (direct text nodes only — children handle their own text)
+        const textParts = this._extractText(el);
+        for (const tp of textParts) {
+            content += this._renderText(tp.text, tp.styles || style, tp.x ?? x, tp.y ?? y, tp.w ?? w, tp.h ?? h, win);
         }
 
-        // ------------------------------------------------------------------
-        // Background
-        // ------------------------------------------------------------------
-        createBackground(styles, x, y, w, h, br, shadowFilterId, layerName) {
-            const bgImage = styles.backgroundImage;
-            const bgColor = styles.backgroundColor;
-            const hasGradient = bgImage && bgImage !== 'none';
-            const hasBgColor = bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent';
-
-            let svg = '';
-            let filterAttr = shadowFilterId ? ` filter="url(#${shadowFilterId})"` : '';
-
-            if (hasGradient) {
-                const gradientId = this.createGradient(bgImage, x, y, w, h, layerName);
-                if (gradientId) {
-                    svg += this.createRect(x, y, w, h, br, `url(#${gradientId})`, filterAttr, '');
-                } else if (hasBgColor) {
-                    svg += this.createRect(x, y, w, h, br, bgColor, filterAttr, '');
-                }
-            } else if (hasBgColor) {
-                svg += this.createRect(x, y, w, h, br, bgColor, filterAttr, '');
-            } else if (shadowFilterId) {
-                svg += this.createRect(x, y, w, h, br, '#000000', filterAttr, '');
-            }
-
-            return svg;
+        // 6. Children
+        const childSVG = this._processChildren(el, ref, win);
+        const overflow = style.overflow === 'hidden' || style.overflow === 'clip';
+        const hasBR = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
+        if (overflow && hasBR && childSVG.trim()) {
+            const clipId = this._addClip(x, y, w, h, br);
+            content += `<g clip-path="url(#${clipId})">${childSVG}</g>`;
+        } else if (childSVG.trim()) {
+            content += childSVG;
         }
 
-        // ------------------------------------------------------------------
-        // Create a rect or path
-        // ------------------------------------------------------------------
-        createRect(x, y, w, h, br, fill, filterAttr = '', clipAttr = '') {
-            if (w < 0.5 || h < 0.5) return '';
-            if (br.tl === br.tr && br.tr === br.br && br.br === br.bl) {
-                const rx = this.round(Math.min(br.tl, w / 2, h / 2));
-                return `<rect x="${x}" y="${y}" width="${w}" height="${h}"${rx > 0 ? ` rx="${rx}" ry="${rx}"` : ''} fill="${fill}"${filterAttr}${clipAttr}/>`;
-            }
-            const d = this.roundedRectPath(x, y, w, h, br);
-            return `<path d="${d}" fill="${fill}"${filterAttr}${clipAttr}/>`;
-        }
-
-        roundedRectPath(x, y, w, h, r) {
-            const tl = Math.min(r.tl, w / 2, h / 2);
-            const tr = Math.min(r.tr, w / 2, h / 2);
-            const br_ = Math.min(r.br, w / 2, h / 2);
-            const bl = Math.min(r.bl, w / 2, h / 2);
-
-            return [
-                `M${x + tl},${y}`,
-                `L${x + w - tr},${y}`,
-                tr > 0 ? `Q${x + w},${y} ${x + w},${y + tr}` : `L${x + w},${y}`,
-                `L${x + w},${y + h - br_}`,
-                br_ > 0 ? `Q${x + w},${y + h} ${x + w - br_},${y + h}` : `L${x + w},${y + h}`,
-                `L${x + bl},${y + h}`,
-                bl > 0 ? `Q${x},${y + h} ${x},${y + h - bl}` : `L${x},${y + h}`,
-                `L${x},${y + tl}`,
-                tl > 0 ? `Q${x},${y} ${x + tl},${y}` : `L${x},${y}`,
-                'Z'
-            ].join(' ');
-        }
-
-        // ------------------------------------------------------------------
-        // Border
-        // ------------------------------------------------------------------
-        createBorder(styles, x, y, w, h, br, layerName) {
-            // Check all sides
-            const bwTop = parseFloat(styles.borderTopWidth) || 0;
-            const bwRight = parseFloat(styles.borderRightWidth) || 0;
-            const bwBottom = parseFloat(styles.borderBottomWidth) || 0;
-            const bwLeft = parseFloat(styles.borderLeftWidth) || 0;
-            const bw = Math.max(bwTop, bwRight, bwBottom, bwLeft);
-            if (bw < 0.5) return '';
-
-            const bc = styles.borderTopColor;
-            const bs = styles.borderTopStyle;
-            if (bs === 'none') return '';
-
-            const offset = bw / 2;
-            const bx = x + offset;
-            const by = y + offset;
-            const bw2 = w - bw;
-            const bh2 = h - bw;
-
-            const bbr = {
-                tl: Math.max(0, br.tl - offset),
-                tr: Math.max(0, br.tr - offset),
-                br: Math.max(0, br.br - offset),
-                bl: Math.max(0, br.bl - offset),
-            };
-
-            let strokeDash = '';
-            if (bs === 'dashed') strokeDash = ` stroke-dasharray="${bw * 3} ${bw * 2}"`;
-            else if (bs === 'dotted') strokeDash = ` stroke-dasharray="${bw} ${bw}"`;
-
-            const d = this.roundedRectPath(bx, by, bw2, bh2, bbr);
-            return `<path d="${d}" fill="none" stroke="${bc}" stroke-width="${bw}"${strokeDash}/>`;
-        }
-
-        // ------------------------------------------------------------------
-        // Shadow filter
-        // ------------------------------------------------------------------
-        createShadowFilter(styles, layerName) {
-            const shadow = styles.boxShadow;
-            if (!shadow || shadow === 'none') return null;
-
-            const shadows = this.parseBoxShadow(shadow);
-            if (shadows.length === 0) return null;
-
-            const id = `shadow-${this.defsCounter++}`;
-            let filters = '';
-
-            for (const s of shadows) {
-                const blur = Math.max(s.blur, 0.1);
-                const dx = s.x;
-                const dy = s.y;
-                const color = s.color || 'rgba(0,0,0,0.3)';
-                // Extract alpha from rgba for flood-opacity
-                const fmt = this.formatColorForSVG(color);
-                const floodOpacity = fmt.opacity;
-                filters += `<feDropShadow in="SourceGraphic" dx="${this.round(dx)}" dy="${this.round(dy)}" stdDeviation="${this.round(blur / 3)}" flood-color="${fmt.color}" flood-opacity="${floodOpacity}"/>`;
-            }
-
-            this.defs.push(`<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">${filters}</filter>`);
-            return id;
-        }
-
-        parseBoxShadow(shadowStr) {
-            const results = [];
-            const shadows = [];
-            let current = '';
-            let parenDepth = 0;
-            for (let i = 0; i < shadowStr.length; i++) {
-                const c = shadowStr[i];
-                if (c === '(') parenDepth++;
-                if (c === ')') parenDepth--;
-                if (c === ',' && parenDepth === 0) {
-                    shadows.push(current.trim());
-                    current = '';
-                } else {
-                    current += c;
-                }
-            }
-            if (current.trim()) shadows.push(current.trim());
-
-            for (const s of shadows) {
-                const isInset = s.includes('inset');
-                // Extract color first, then remove it to avoid number conflicts
-                const colorMatch = s.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/);
-                const color = colorMatch ? colorMatch[0] : null;
-
-                // Strip out color (which has numbers inside rgba/hsla) before extracting numeric values
-                let stripped = s;
-                if (colorMatch) {
-                    stripped = s.replace(colorMatch[0], '');
-                }
-
-                const nums = stripped.match(/[-+]?\d*\.?\d+(px|em|rem|vw|vh|%)?/g) || [];
-
-                if (nums.length >= 2) {
-                    results.push({
-                        inset: isInset,
-                        x: parseFloat(nums[0]) || 0,
-                        y: parseFloat(nums[1]) || 0,
-                        blur: parseFloat(nums[2]) || 0,
-                        spread: parseFloat(nums[3]) || 0,
-                        color: color || 'rgba(0,0,0,0.3)',
-                    });
-                }
-            }
-            return results;
-        }
-
-        // ------------------------------------------------------------------
-        // Gradient (with balanced-paren parsing for nested rgb())
-        // ------------------------------------------------------------------
-        matchBalancedParen(str, prefix) {
-            const idx = str.indexOf(prefix + '(');
-            if (idx === -1) return null;
-            let start = idx + prefix.length + 1;
-            let depth = 1;
-            let i = start;
-            for (; i < str.length && depth > 0; i++) {
-                if (str[i] === '(') depth++;
-                if (str[i] === ')') depth--;
-            }
-            return str.substring(start, i - 1);
-        }
-
-        createGradient(bgImage, x, y, w, h, layerName) {
-            if (!bgImage || bgImage === 'none') return null;
-
-            // Parse linear-gradient
-            const lgArgs = this.matchBalancedParen(bgImage, 'linear-gradient');
-            if (lgArgs) {
-                return this.createLinearGradient(lgArgs, x, y, w, h, layerName);
-            }
-
-            // Parse radial-gradient
-            const rgArgs = this.matchBalancedParen(bgImage, 'radial-gradient');
-            if (rgArgs) {
-                return this.createRadialGradient(rgArgs, x, y, w, h, layerName);
-            }
-
-            return null;
-        }
-
-        formatColorForSVG(color) {
-            // Convert rgba(r,g,b,a) to rgb + separate opacity
-            const rgbaMatch = color.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)/);
-            if (rgbaMatch) {
-                const r = Math.round(parseFloat(rgbaMatch[1]));
-                const g = Math.round(parseFloat(rgbaMatch[2]));
-                const b = Math.round(parseFloat(rgbaMatch[3]));
-                const a = rgbaMatch[4] !== undefined ? parseFloat(rgbaMatch[4]) : 1;
-                return { color: `rgb(${r}, ${g}, ${b})`, opacity: a };
-            }
-            // hsla
-            const hslaMatch = color.match(/hsla?\(\s*([\d.]+)\s*,\s*([\d.%]+)\s*,\s*([\d.%]+)\s*(?:,\s*([\d.]+))?\s*\)/);
-            if (hslaMatch) {
-                const a = hslaMatch[4] !== undefined ? parseFloat(hslaMatch[4]) : 1;
-                return { color: color.replace(/[\d.]+\)$/, '') + ')', opacity: a };
-            }
-            return { color, opacity: 1 };
-        }
-
-        formatStopElement(stop) {
-            const fmt = this.formatColorForSVG(stop.color);
-            if (fmt.opacity < 1) {
-                return `<stop offset="${stop.offset}%" stop-color="${fmt.color}" stop-opacity="${fmt.opacity}"/>`;
-            }
-            return `<stop offset="${stop.offset}%" stop-color="${fmt.color}"/>`;
-        }
-
-        createLinearGradient(argsStr, x, y, w, h, layerName) {
-            const id = `grad-${this.defsCounter++}`;
-            let angle = 180;
-            let stops = [];
-
-            const parts = this.splitGradientArgs(argsStr);
-
-            let firstPart = parts[0].trim();
-            if (firstPart.match(/^\d/)) {
-                angle = parseFloat(firstPart) || 180;
-                parts.shift();
-            } else if (firstPart.includes('to ')) {
-                angle = this.directionToAngle(firstPart);
-                parts.shift();
-            }
-
-            for (const part of parts) {
-                const stop = this.parseColorStop(part.trim());
-                if (stop) stops.push(stop);
-            }
-
-            if (stops.length === 0) return null;
-
-            // If no explicit offsets, distribute evenly
-            if (stops.every(s => s.offset === 0 && stops.length > 1)) {
-                stops.forEach((s, i) => { s.offset = Math.round(i * 100 / (stops.length - 1)); });
-            }
-
-            const angleRad = (angle - 90) * (Math.PI / 180);
-            const x1 = this.round(x + w/2 - Math.cos(angleRad) * w/2, 2);
-            const y1 = this.round(y + h/2 - Math.sin(angleRad) * h/2, 2);
-            const x2 = this.round(x + w/2 + Math.cos(angleRad) * w/2, 2);
-            const y2 = this.round(y + h/2 + Math.sin(angleRad) * h/2, 2);
-
-            let stopElements = stops.map(s =>
-                this.formatStopElement(s)
-            ).join('\n');
-
-            this.defs.push(`<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" gradientUnits="userSpaceOnUse">${stopElements}</linearGradient>`);
-            return id;
-        }
-
-        createRadialGradient(argsStr, x, y, w, h, layerName) {
-            const id = `grad-${this.defsCounter++}`;
-            const parts = this.splitGradientArgs(argsStr);
-            let stops = [];
-
-            // Skip shape/position args (first parts that aren't colors)
-            let startIdx = 0;
-            for (let i = 0; i < parts.length; i++) {
-                const part = parts[i].trim();
-                if (part.match(/^(circle|ellipse|at|[\d.]+%|closest|farthest)/)) {
-                    startIdx = i + 1;
-                } else {
-                    break;
-                }
-            }
-
-            for (let i = startIdx; i < parts.length; i++) {
-                const stop = this.parseColorStop(parts[i].trim());
-                if (stop) stops.push(stop);
-            }
-
-            if (stops.length === 0) return null;
-
-            if (stops.every(s => s.offset === 0 && stops.length > 1)) {
-                stops.forEach((s, i) => { s.offset = Math.round(i * 100 / (stops.length - 1)); });
-            }
-
-            let stopElements = stops.map(s =>
-                this.formatStopElement(s)
-            ).join('\n');
-
-            // Parse "circle at X% Y%" for position
-            let cxPct = 50, cyPct = 50;
-            const atMatch = argsStr.match(/at\s+([\d.]+)%\s+([\d.]+)%/);
-            if (atMatch) {
-                cxPct = parseFloat(atMatch[1]);
-                cyPct = parseFloat(atMatch[2]);
-            }
-            const cx = this.round(x + w * cxPct / 100);
-            const cy = this.round(y + h * cyPct / 100);
-            const r = this.round(Math.max(w, h) / 2);
-
-            this.defs.push(`<radialGradient id="${id}" cx="${cx}" cy="${cy}" r="${r}" gradientUnits="userSpaceOnUse">${stopElements}</radialGradient>`);
-            return id;
-        }
-
-        splitGradientArgs(str) {
-            const parts = [];
-            let current = '';
-            let parenDepth = 0;
-            for (let i = 0; i < str.length; i++) {
-                const c = str[i];
-                if (c === '(') parenDepth++;
-                if (c === ')') parenDepth--;
-                if (c === ',' && parenDepth === 0) {
-                    parts.push(current);
-                    current = '';
-                } else {
-                    current += c;
-                }
-            }
-            if (current.trim()) parts.push(current);
-            return parts;
-        }
-
-        parseColorStop(str) {
-            // Try hex
-            const hexMatch = str.match(/(#[0-9a-fA-F]{3,8})/);
-            if (hexMatch) {
-                const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
-                return { color: hexMatch[1], offset: offsetMatch ? parseFloat(offsetMatch[1]) : 0 };
-            }
-
-            // Try rgba/hsla
-            const funcMatch = str.match(/(rgba?\([^)]+\)|hsla?\([^)]+\))/);
-            if (funcMatch) {
-                const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
-                return { color: funcMatch[1], offset: offsetMatch ? parseFloat(offsetMatch[1]) : 0 };
-            }
-
-            // Named colors
-            const namedMatch = str.match(/\b(red|blue|green|white|black|yellow|orange|purple|pink|gray|grey|cyan|magenta|lime|navy|teal|maroon|olive|aqua|silver|gold|transparent|currentColor)\b/i);
-            if (namedMatch) {
-                const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
-                return { color: namedMatch[1], offset: offsetMatch ? parseFloat(offsetMatch[1]) : 0 };
-            }
-
-            return null;
-        }
-
-        directionToAngle(dir) {
-            const map = {
-                'to top': 0, 'to right': 90, 'to bottom': 180, 'to left': 270,
-                'to top right': 45, 'to top left': 315,
-                'to bottom right': 135, 'to bottom left': 225,
-            };
-            return map[dir] || 180;
-        }
-
-        // ------------------------------------------------------------------
-        // Text
-        // ------------------------------------------------------------------
-        createText(text, styles, x, y, w, h) {
-            const fontSize = parseFloat(styles.fontSize) || 16;
-            const fontFamily = styles.fontFamily.replace(/['"]/g, '');
-            const fontWeight = styles.fontWeight;
-            const color = styles.color;
-            const textAlign = styles.textAlign || 'start';
-            const lineHeight = parseFloat(styles.lineHeight) || fontSize * 1.3;
-            const direction = styles.direction || 'rtl';
-
-            // Compute y offset for baseline
-            const baselineY = y + fontSize * 0.85;
-
-            let textAnchor = 'start';
-            let textX = x;
-            if (textAlign === 'center') {
-                textAnchor = 'middle';
-                textX = x + w / 2;
-            } else if (textAlign === 'right' || textAlign === 'end') {
-                textAnchor = 'end';
-                textX = x + w;
-            } else if (direction === 'rtl' && textAlign === 'start') {
-                textAnchor = 'end';
-                textX = x + w;
-            }
-
-            const escapedText = this.escapeHtml(text.trim());
-
-            return `<text x="${this.round(textX)}" fill="${color}" font-family="${fontFamily}" font-size="${fontSize}" text-anchor="${textAnchor}" font-weight="${fontWeight}" direction="${direction}" y="${this.round(baselineY)}">${escapedText}</text>`;
-        }
-
-        // ------------------------------------------------------------------
-        // SVG Icons
-        // ------------------------------------------------------------------
-        createSVGIcon(el, x, y, w, h, styles) {
-            const clone = el.cloneNode(true);
-            clone.removeAttribute('class');
-            clone.removeAttribute('style');
-            clone.setAttribute('x', x);
-            clone.setAttribute('y', y);
-            clone.setAttribute('width', w);
-            clone.setAttribute('height', h);
-
-            // Apply computed fill/stroke
-            const fill = styles.fill && styles.fill !== 'none' ? styles.fill : '';
-            const stroke = styles.stroke && styles.stroke !== 'none' ? styles.stroke : '';
-            if (fill) clone.setAttribute('fill', fill);
-            if (stroke) clone.setAttribute('stroke', stroke);
-
-            return clone.outerHTML;
-        }
-
-        // ------------------------------------------------------------------
-        // Image elements
-        // ------------------------------------------------------------------
-        createImageElement(el, x, y, w, h, styles, layerName) {
-            const src = el.src || el.getAttribute('src');
-            if (!src) return '';
-
-            const imgId = `img-${this.imagesQueue.length}`;
-            this.imagesQueue.push({ id: imgId, src, x, y, w, h, styles, layerName });
-
-            return `<!--IMAGE:${imgId}-->`;
-        }
-
-        async processImages() {
-            for (const img of this.imagesQueue) {
-                try {
-                    const base64 = await this.loadImageAsBase64(img.src);
-                    if (base64) {
-                        const br = this.getBorderRadius(img.styles, img.w, img.h);
-                        const hasClip = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
-                        const imgSvg = hasClip
-                            ? this.createClippedImage(img.x, img.y, img.w, img.h, base64, br, img.layerName)
-                            : `<image x="${img.x}" y="${img.y}" width="${img.w}" height="${img.h}" href="${base64}"/>`;
-
-                        this._imageReplacements.push({ id: img.id, svg: imgSvg });
-                    }
-                } catch (e) {
-                    console.warn('Failed to load image:', img.src, e);
-                }
-            }
-        }
-
-        createClippedImage(x, y, w, h, href, br, layerName) {
-            const clipId = `imgclip-${this.defsCounter++}`;
-            const d = this.roundedRectPath(x, y, w, h, br);
-            this.defs.push(`<clipPath id="${clipId}"><path d="${d}"/></clipPath>`);
-            return `<g clip-path="url(#${clipId})"><image x="${x}" y="${y}" width="${w}" height="${h}" href="${href}"/></g>`;
-        }
-
-        async loadImageAsBase64(src) {
-            // Try fetching image via CORS proxies
-            const proxies = [
-                '', // direct
-            ];
-
-            for (const proxy of proxies) {
-                const url = proxy ? proxy + encodeURIComponent(src) : src;
-                try {
-                    const resp = await fetch(url, { mode: 'cors', credentials: 'omit' });
-                    if (resp.ok) {
-                        const blob = await resp.blob();
-                        const base64 = await this.blobToBase64(blob);
-                        return base64;
-                    }
-                } catch (e) {
-                    continue;
-                }
-            }
-
-            // Fallback: try drawing to canvas
-            return new Promise((resolve) => {
-                try {
-                    const img = new Image();
-                    img.crossOrigin = 'anonymous';
-                    img.onload = () => {
-                        const canvas = document.createElement('canvas');
-                        canvas.width = img.naturalWidth || img.width;
-                        canvas.height = img.naturalHeight || img.height;
-                        const ctx = canvas.getContext('2d');
-                        ctx.drawImage(img, 0, 0);
-                        const base64 = canvas.toDataURL('image/png');
-                        resolve(base64);
-                    };
-                    img.onerror = () => resolve(null);
-                    img.src = src;
-                    setTimeout(() => resolve(null), 5000);
-                } catch (e) {
-                    resolve(null);
-                }
-            });
-        }
-
-        blobToBase64(blob) {
-            return new Promise((resolve) => {
-                const reader = new FileReader();
-                reader.onload = () => resolve(reader.result);
-                reader.onerror = () => resolve(null);
-                reader.readAsDataURL(blob);
-            });
-        }
-
-        // ------------------------------------------------------------------
-        // Visibility check
-        // ------------------------------------------------------------------
-        isVisible(el) {
-            if (!el || el.nodeType !== 1) return false;
-            const styles = getComputedStyle(el);
-            if (styles.display === 'none') return false;
-            if (styles.visibility === 'hidden' && !el.closest('#render-container')) return false;
-            // Don't skip elements in render container just because visibility is hidden
-            // (render container itself is offscreen)
-            if (parseFloat(styles.opacity) === 0) return false;
-            if (el.getAttribute('aria-hidden') === 'true' && el.tagName !== 'SVG') return false;
-            // Skip sr-only elements
-            if (el.classList && el.classList.contains('sr-only')) return false;
-            return true;
-        }
-
-        isContainer(el) {
-            const tag = el.tagName.toLowerCase();
-            return ['div', 'section', 'main', 'header', 'footer', 'nav', 'article',
-                    'aside', 'form', 'ul', 'ol', 'table'].includes(tag);
-        }
-
-        getLayerName(el) {
-            // Priority: id > class > tag
-            if (el.id) return this.sanitizeName(el.id);
-            if (el.className && typeof el.className === 'string') {
-                const mainClass = el.className.split(/\s+/).find(c => !c.startsWith('css-'));
-                if (mainClass) return this.sanitizeName(mainClass);
-            }
-            return this.getTagBasedName(el);
-        }
-
-        getTagBasedName(el) {
-            const tag = el.tagName.toLowerCase();
-            const map = {
-                'div': 'Frame', 'section': 'Section', 'main': 'Main',
-                'header': 'Header', 'footer': 'Footer', 'nav': 'Nav',
-                'article': 'Article', 'aside': 'Aside', 'form': 'Form',
-                'button': 'Button', 'a': 'Link', 'img': 'Image',
-                'svg': 'Icon', 'p': 'Paragraph', 'h1': 'Heading',
-                'h2': 'Heading', 'h3': 'Heading', 'h4': 'Heading',
-                'h5': 'Heading', 'h6': 'Heading', 'span': 'Text',
-            };
-            const base = map[tag] || tag.charAt(0).toUpperCase() + tag.slice(1);
-            return `${base}-${++this.layerCounter}`;
-        }
-
-        sanitizeName(name) {
-            let clean = name
-                .replace(/[#.]/g, '')
-                .replace(/[^a-zA-Z0-9\u0600-\u06FF_-]/g, '-')
-                .replace(/-+/g, '-')
-                .replace(/^-|-$/g, '');
-            if (!clean) return `Layer-${++this.layerCounter}`;
-            return clean;
-        }
-
-        getBorderRadius(styles, w, h) {
-            return {
-                tl: this.parseBr(styles.borderTopLeftRadius, w, h),
-                tr: this.parseBr(styles.borderTopRightRadius, w, h),
-                br: this.parseBr(styles.borderBottomRightRadius, w, h),
-                bl: this.parseBr(styles.borderBottomLeftRadius, w, h),
-            };
-        }
-
-        parseBr(value, w, h) {
-            if (!value || value === '0px') return 0;
-            const parts = value.split(/\s+/);
-            const v = parseFloat(parts[0]) || 0;
-            return Math.min(v, w / 2, h / 2);
-        }
-
-        getDirectText(el) {
-            let text = '';
-            for (const node of el.childNodes) {
-                if (node.nodeType === 3) {
-                    text += node.textContent;
-                }
-            }
-            return text;
-        }
-
-        getTransform(styles, el) {
-            const transform = styles.transform;
-            if (!transform || transform === 'none') return '';
-
-            const matrixMatch = transform.match(/matrix\(([^)]+)\)/);
-            if (matrixMatch) {
-                const values = matrixMatch[1].split(',').map(v => parseFloat(v.trim()));
-                return ` transform="matrix(${values.join(' ')})"`;
-            }
-
-            const translateMatch = transform.match(/translate\(([^,)]+)(?:,\s*([^)]+))?\)/);
-            if (translateMatch) {
-                const tx = parseFloat(translateMatch[1]) || 0;
-                const ty = parseFloat(translateMatch[2]) || 0;
-                return ` transform="translate(${this.round(tx)},${this.round(ty)})"`;
-            }
-
-            return '';
-        }
-
-        escapeHtml(str) {
-            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-        }
-
-        escapeAttr(str) {
-            return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        }
-
-        round(val, decimals) {
-            decimals = decimals || this.convertOptions.precision;
-            const factor = Math.pow(10, decimals);
-            return Math.round(val * factor) / factor;
-        }
-
-        // ------------------------------------------------------------------
-        // Build final SVG
-        // ------------------------------------------------------------------
-        buildSVG(content) {
-            let finalContent = content;
-            if (this._imageReplacements) {
-                for (const rep of this._imageReplacements) {
-                    finalContent = finalContent.replace(`<!--IMAGE:${rep.id}-->`, rep.svg);
-                }
-            }
-
-            const svg = `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
-     width="${this.svgWidth}" height="${this.svgHeight}" 
-     viewBox="0 0 ${this.svgWidth} ${this.svgHeight}">
-  <defs>
-${this.defs.map(d => '    ' + d).join('\n')}
-  </defs>
-  <rect width="${this.svgWidth}" height="${this.svgHeight}" fill="transparent"/>
-${finalContent}
-</svg>`;
-            return svg;
-        }
+        if (!content.trim()) return '';
+
+        const isFrame = this._isContainer(el);
+        const opacity = parseFloat(style.opacity);
+        const opAttr = (opacity < 1 && opacity > 0) ? ` opacity="${opacity}"` : '';
+        return `<g id="${this.esc(name)}" data-type="${isFrame ? 'Frame' : 'Group'}"${opAttr}>${content}</g>`;
     }
 
-    // ===================================================================
-    // UI Logic
-    // ===================================================================
-
-    const converter = new FigmaSVGConverter();
-    let currentSVG = '';
-    let currentTab = 'preview';
-
-    const sampleHTML = `<div style="max-width: 420px; margin: 40px auto; font-family: 'Cairo', sans-serif; direction: rtl;">
-  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 20px; padding: 32px; box-shadow: 0 20px 60px rgba(102, 126, 234, 0.4);">
-    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
-      <div style="width: 48px; height: 48px; background: rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
-        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
-      </div>
-      <div>
-        <h2 style="color: white; margin: 0; font-size: 20px; font-weight: 700;">كورس التصميم الاحترافي</h2>
-        <p style="color: rgba(255,255,255,0.8); margin: 4px 0 0; font-size: 14px;">تعلّم Figma من الصفر للاحتراف</p>
-      </div>
-    </div>
-    <div style="background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); border-radius: 16px; padding: 20px; margin-bottom: 20px;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
-        <span style="color: rgba(255,255,255,0.7); font-size: 13px;">السعر</span>
-        <div>
-          <span style="color: rgba(255,255,255,0.5); text-decoration: line-through; font-size: 14px; margin-left: 8px;">$199</span>
-          <span style="color: white; font-size: 28px; font-weight: 800;">$49</span>
-        </div>
-      </div>
-      <div style="background: rgba(255,255,255,0.2); border-radius: 8px; height: 6px; overflow: hidden;">
-        <div style="background: #fbbf24; height: 100%; width: 75%; border-radius: 8px;"></div>
-      </div>
-      <p style="color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 8px; text-align: center;">75% مكتمل — بقي 12 مقعد فقط!</p>
-    </div>
-    <button style="width: 100%; background: #fbbf24; color: #1a1a2e; border: none; border-radius: 12px; padding: 14px 24px; font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 4px 15px rgba(251, 191, 36, 0.4);">
-      🚀 سجّل الآن
-    </button>
-    <p style="color: rgba(255,255,255,0.5); text-align: center; font-size: 12px; margin-top: 12px;">ضمان استرداد كامل خلال 30 يوم</p>
-  </div>
-</div>`;
-
-    function loadSample() {
-        document.getElementById('html-input').value = sampleHTML;
-        updatePreview();
+    _processChildren(el, ref, win) {
+        const children = Array.from(el.children);
+        children.sort((a, b) => {
+            const za = parseInt(win.getComputedStyle(a).zIndex) || 0;
+            const zb = parseInt(win.getComputedStyle(b).zIndex) || 0;
+            return za - zb;
+        });
+        return children.map(c => this.processElement(c, ref, win)).filter(s => s.trim()).join('\n');
     }
 
-    function clearEditor() {
-        document.getElementById('html-input').value = '';
-        document.getElementById('preview-content').innerHTML = '';
-        document.getElementById('preview-content').classList.add('hidden');
-        document.getElementById('preview-placeholder').classList.remove('hidden');
-        document.getElementById('svg-code').textContent = '';
-        document.getElementById('layers-tree').innerHTML = '';
-        currentSVG = '';
-        document.getElementById('btn-copy').classList.add('hidden');
-        document.getElementById('btn-download').classList.add('hidden');
-        updateStatus('جاهز', 'bg-slate-800 text-slate-400 border-slate-700');
-        updateBadge(0, '—');
-    }
+    // ─── Backgrounds (MULTIPLE layers!) ───
+    _renderBackgrounds(style, x, y, w, h, br, name) {
+        let svg = '';
+        const bgColor = style.backgroundColor;
+        const bgImage = style.backgroundImage;
 
-    function updatePreview() {
-        const html = document.getElementById('html-input').value.trim();
-        const previewEl = document.getElementById('preview-content');
-        const placeholder = document.getElementById('preview-placeholder');
+        // Layer 1: background-color (bottom)
+        const hasBgColor = bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent';
+        const shadowId = this._addShadowFilter(style, name);
+        const filterAttr = shadowId ? ` filter="url(#${shadowId})"` : '';
 
-        if (!html) {
-            previewEl.classList.add('hidden');
-            placeholder.classList.remove('hidden');
-            return;
+        if (hasBgColor) {
+            svg += this._rect(x, y, w, h, br, bgColor, filterAttr);
         }
 
-        // For preview, extract body content too
-        const isFullDoc = /<!DOCTYPE|<html/i.test(html);
-        let previewContent = html;
-        if (isFullDoc) {
-            const parser = new DOMParser();
-            const doc = parser.parseFromString(html, 'text/html');
-            previewContent = (doc.body || doc.documentElement).innerHTML;
-        }
-
-        previewEl.innerHTML = previewContent;
-        previewEl.classList.remove('hidden');
-        placeholder.classList.add('hidden');
-    }
-
-    async function convertNow() {
-        const html = document.getElementById('html-input').value.trim();
-        if (!html) {
-            alert('الرجاء إدخال كود HTML أولاً');
-            return;
-        }
-
-        updateStatus('جاري التحويل...', 'bg-yellow-900 text-yellow-300 border-yellow-600');
-        showProgress(true);
-        setProgress(10);
-
-        try {
-            updatePreview();
-            setProgress(30);
-
-            const svg = await converter.convert(html);
-            currentSVG = svg;
-            setProgress(80);
-
-            const previewEl = document.getElementById('preview-content');
-            document.getElementById('preview-placeholder').classList.add('hidden');
-
-            const parser = new DOMParser();
-            const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
-            const svgEl = svgDoc.querySelector('svg');
-
-            if (svgEl) {
-                const maxWidth = document.getElementById('panel-preview').clientWidth - 48;
-                const vh = document.getElementById('panel-preview').clientHeight - 48;
-                const svgW = parseFloat(svgEl.getAttribute('width')) || 400;
-                const svgH = parseFloat(svgEl.getAttribute('height')) || 300;
-                const scale = Math.min(maxWidth / svgW, vh / svgH, 1);
-
-                svgEl.setAttribute('width', svgW * scale);
-                svgEl.setAttribute('height', svgH * scale);
-                svgEl.style.maxWidth = '100%';
-                svgEl.style.height = 'auto';
-
-                previewEl.innerHTML = '';
-                previewEl.appendChild(svgEl);
-                previewEl.classList.remove('hidden');
-                previewEl.style.display = 'inline-block';
+        // Layer 2+: each background-image (gradients)
+        if (bgImage && bgImage !== 'none') {
+            const layers = this._splitBGImages(bgImage);
+            for (const layer of layers) {
+                const gradId = this._createGradientFromLayer(layer, x, y, w, h, name);
+                if (gradId) {
+                    svg += this._rect(x, y, w, h, br, `url(#${gradId})`, hasBgColor ? '' : filterAttr);
+                }
             }
-
-            document.getElementById('svg-code').textContent = formatSVG(svg);
-            updateLayersView(svg);
-
-            const layerCount = (svg.match(/<g id="/g) || []).length;
-            const finalW = converter.svgWidth || 0;
-            const finalH = converter.svgHeight || 0;
-            updateBadge(layerCount, `${finalW}×${finalH}`);
-
-            document.getElementById('btn-copy').classList.remove('hidden');
-            document.getElementById('btn-download').classList.remove('hidden');
-
-            setProgress(100);
-            updateStatus('تم التحويل ✅', 'bg-green-900 text-green-300 border-green-600');
-            switchTab('preview');
-
-        } catch (err) {
-            console.error(err);
-            updateStatus('خطأ: ' + err.message, 'bg-red-900 text-red-300 border-red-600');
-        } finally {
-            setTimeout(() => showProgress(false), 500);
         }
+
+        // If no bg at all but has shadow, render invisible rect for shadow
+        if (!hasBgColor && (!bgImage || bgImage === 'none') && shadowId) {
+            svg += this._rect(x, y, w, h, br, '#000000', filterAttr);
+        }
+
+        return svg;
     }
 
-    function formatSVG(svg) {
-        return svg.replace(/>/g, '>\n').replace(/\n\n+/g, '\n').trim();
-    }
-
-    function updateLayersView(svg) {
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(svg, 'image/svg+xml');
-        let html = '<div class="space-y-1 text-xs">';
-        html += buildLayerTree(doc.querySelector('svg'), 0);
-        html += '</div>';
-        document.getElementById('layers-tree').innerHTML = html;
-    }
-
-    function buildLayerTree(element, depth) {
-        let html = '';
-        const indent = depth * 16;
-        const children = Array.from(element.children);
-        for (const child of children) {
-            if (child.tagName === 'defs') continue;
-            if (child.tagName === 'rect' && child.getAttribute('fill') === 'transparent') continue;
-            const id = child.getAttribute('id') || '';
-            const type = child.getAttribute('data-type') || child.tagName;
-            const isGroup = child.tagName === 'g';
-            if (isGroup) {
-                const icon = type === 'Frame' ? '▣' : '◈';
-                html += `<div style="padding-right: ${indent}px;" class="flex items-center gap-1 py-0.5 px-2 rounded hover:bg-slate-800 cursor-pointer">
-                    <span class="text-indigo-400">${icon}</span>
-                    <span class="text-slate-200">${id || type}</span>
-                    <span class="layer-badge mr-auto">${type}</span>
-                </div>`;
-                html += buildLayerTree(child, depth + 1);
+    _splitBGImages(bgImage) {
+        // Split comma-separated gradients respecting parentheses
+        const layers = [];
+        let depth = 0, current = '';
+        for (let i = 0; i < bgImage.length; i++) {
+            const c = bgImage[i];
+            if (c === '(') depth++;
+            if (c === ')') depth--;
+            if (c === ',' && depth === 0) {
+                const t = current.trim();
+                if (t && t !== 'none') layers.push(t);
+                current = '';
             } else {
-                const icon = child.tagName === 'text' ? 'T' :
-                             child.tagName === 'image' ? '🖼' :
-                             child.tagName === 'path' ? '⬡' : '▪';
-                html += `<div style="padding-right: ${indent + 16}px;" class="flex items-center gap-1 py-0.5 px-2 rounded hover:bg-slate-800 text-slate-400">
-                    <span>${icon}</span>
-                    <span>${child.tagName}${id ? ': ' + id : ''}</span>
-                </div>`;
+                current += c;
             }
         }
-        return html;
+        const t = current.trim();
+        if (t && t !== 'none') layers.push(t);
+        return layers;
     }
 
-    function switchTab(tab) {
-        currentTab = tab;
-        document.getElementById('panel-preview').classList.toggle('hidden', tab !== 'preview');
-        document.getElementById('panel-svg').classList.toggle('hidden', tab !== 'svg');
-        document.getElementById('panel-layers').classList.toggle('hidden', tab !== 'layers');
-        document.getElementById('tab-preview').className = tab === 'preview' ? 'tab-active px-3 py-1 rounded text-xs font-semibold transition' : 'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
-        document.getElementById('tab-svg').className = tab === 'svg' ? 'tab-active px-3 py-1 rounded text-xs font-semibold transition' : 'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
-        document.getElementById('tab-layers').className = tab === 'layers' ? 'tab-active px-3 py-1 rounded text-xs font-semibold transition' : 'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
+    _createGradientFromLayer(layer, x, y, w, h, name) {
+        // Try linear-gradient
+        const lgArgs = this._matchBalanced(layer, 'linear-gradient');
+        if (lgArgs) return this._createLinearGrad(lgArgs, x, y, w, h);
+
+        // Try radial-gradient
+        const rgArgs = this._matchBalanced(layer, 'radial-gradient');
+        if (rgArgs) return this._createRadialGrad(rgArgs, x, y, w, h);
+
+        return null;
     }
 
-    function copySVG() {
-        if (!currentSVG) return;
-        navigator.clipboard.writeText(currentSVG).then(() => {
-            const btn = document.getElementById('btn-copy');
-            const originalHTML = btn.innerHTML;
-            btn.innerHTML = '✅ تم النسخ';
-            setTimeout(() => btn.innerHTML = originalHTML, 2000);
+    _matchBalanced(str, prefix) {
+        const idx = str.indexOf(prefix + '(');
+        if (idx === -1) return null;
+        let start = idx + prefix.length + 1;
+        let depth = 1, i = start;
+        for (; i < str.length && depth > 0; i++) {
+            if (str[i] === '(') depth++;
+            if (str[i] === ')') depth--;
+        }
+        return str.substring(start, i - 1);
+    }
+
+    _createLinearGrad(argsStr, x, y, w, h) {
+        const id = `grad-${this.defsCounter++}`;
+        const parts = this._splitGradArgs(argsStr);
+        let angle = 180;
+
+        const first = parts[0].trim();
+        if (first.match(/^\d/)) {
+            angle = parseFloat(first) || 180;
+            parts.shift();
+        } else if (first.includes('to ')) {
+            angle = this._dirToAngle(first);
+            parts.shift();
+        }
+
+        const stops = parts.map(p => this._parseStop(p.trim())).filter(Boolean);
+        if (stops.length === 0) return null;
+        this._autoDistribute(stops);
+
+        const rad = (angle - 90) * Math.PI / 180;
+        const x1 = this.r(x + w/2 - Math.cos(rad)*w/2);
+        const y1 = this.r(y + h/2 - Math.sin(rad)*h/2);
+        const x2 = this.r(x + w/2 + Math.cos(rad)*w/2);
+        const y2 = this.r(y + h/2 + Math.sin(rad)*h/2);
+
+        const stopXML = stops.map(s => this._stopXML(s)).join('\n');
+        this.defsList.push(`<linearGradient id="${id}" x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" gradientUnits="userSpaceOnUse">${stopXML}</linearGradient>`);
+        return id;
+    }
+
+    _createRadialGrad(argsStr, x, y, w, h) {
+        const id = `grad-${this.defsCounter++}`;
+        const parts = this._splitGradArgs(argsStr);
+        let stops = [];
+        let cxPct = 50, cyPct = 50;
+
+        // Parse "circle at X% Y%"
+        const atMatch = argsStr.match(/at\s+([\d.]+)(%|px)?\s+([\d.]+)(%|px)?/);
+        if (atMatch) {
+            cxPct = atMatch[2] === '%' ? parseFloat(atMatch[1]) : parseFloat(atMatch[1]) / w * 100;
+            cyPct = atMatch[4] === '%' ? parseFloat(atMatch[3]) : parseFloat(atMatch[3]) / h * 100;
+        }
+
+        // Find color stops (skip shape/position args)
+        let startIdx = 0;
+        for (let i = 0; i < parts.length; i++) {
+            if (parts[i].trim().match(/^(circle|ellipse|at|closest|farthest|[\d.]+%?$)/)) {
+                startIdx = i + 1;
+            } else break;
+        }
+        for (let i = startIdx; i < parts.length; i++) {
+            const s = this._parseStop(parts[i].trim());
+            if (s) stops.push(s);
+        }
+        if (stops.length === 0) return null;
+        this._autoDistribute(stops);
+
+        const cx = this.r(x + w * cxPct / 100);
+        const cy = this.r(y + h * cyPct / 100);
+        const radius = this.r(Math.max(w, h) / 2);
+        const stopXML = stops.map(s => this._stopXML(s)).join('\n');
+        this.defsList.push(`<radialGradient id="${id}" cx="${cx}" cy="${cy}" r="${radius}" gradientUnits="userSpaceOnUse">${stopXML}</radialGradient>`);
+        return id;
+    }
+
+    _splitGradArgs(str) {
+        const parts = []; let current = '', depth = 0;
+        for (let i = 0; i < str.length; i++) {
+            const c = str[i]; if (c === '(') depth++; if (c === ')') depth--;
+            if (c === ',' && depth === 0) { parts.push(current); current = ''; } else current += c;
+        }
+        if (current.trim()) parts.push(current);
+        return parts;
+    }
+
+    _parseStop(str) {
+        // Hex
+        const hex = str.match(/(#[0-9a-fA-F]{3,8})/);
+        if (hex) { const o = str.match(/(\d+\.?\d*)%/); return { color: hex[1], offset: o ? parseFloat(o[1]) : 0 }; }
+        // rgba/hsla
+        const fn = str.match(/(rgba?\([^)]+\)|hsla?\([^)]+\))/);
+        if (fn) { const o = str.match(/(\d+\.?\d*)%/); return { color: fn[1], offset: o ? parseFloat(o[1]) : 0 }; }
+        // Named
+        const named = str.match(/\b(red|blue|green|white|black|yellow|orange|purple|pink|gray|cyan|teal|gold|transparent|currentColor)\b/i);
+        if (named) { const o = str.match(/(\d+\.?\d*)%/); return { color: named[1], offset: o ? parseFloat(o[1]) : 0 }; }
+        return null;
+    }
+
+    _autoDistribute(stops) {
+        if (stops.length > 1 && stops.every(s => s.offset === 0))
+            stops.forEach((s, i) => s.offset = Math.round(i * 100 / (stops.length - 1)));
+    }
+
+    _formatColor(color) {
+        const m = color.match(/rgba?\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*(?:,\s*([\d.]+))?\s*\)/);
+        if (m) {
+            const rgb = `rgb(${Math.round(+m[1])}, ${Math.round(+m[2])}, ${Math.round(+m[3])})`;
+            const a = m[4] !== undefined ? parseFloat(m[4]) : 1;
+            return { color: rgb, opacity: a };
+        }
+        return { color, opacity: 1 };
+    }
+
+    _stopXML(stop) {
+        const f = this._formatColor(stop.color);
+        return f.opacity < 1
+            ? `<stop offset="${stop.offset}%" stop-color="${f.color}" stop-opacity="${f.opacity}"/>`
+            : `<stop offset="${stop.offset}%" stop-color="${f.color}"/>`;
+    }
+
+    _dirToAngle(d) {
+        const map = { 'to top': 0, 'to right': 90, 'to bottom': 180, 'to left': 270, 'to top right': 45, 'to top left': 315, 'to bottom right': 135, 'to bottom left': 225 };
+        return map[d] || 180;
+    }
+
+    // ─── Shadow ───
+    _addShadowFilter(style, name) {
+        const shadow = style.boxShadow;
+        if (!shadow || shadow === 'none') return null;
+        const parsed = this._parseShadow(shadow);
+        if (!parsed.length) return null;
+
+        const id = `shadow-${this.defsCounter++}`;
+        let filters = '';
+        for (const s of parsed) {
+            const fc = this._formatColor(s.color);
+            filters += `<feDropShadow dx="${this.r(s.x)}" dy="${this.r(s.y)}" stdDeviation="${this.r(s.blur/3)}" flood-color="${fc.color}" flood-opacity="${fc.opacity}"/>`;
+        }
+        this.defsList.push(`<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">${filters}</filter>`);
+        return id;
+    }
+
+    _parseShadow(str) {
+        const results = [];
+        // Split multiple shadows
+        const parts = []; let cur = '', depth = 0;
+        for (let i = 0; i < str.length; i++) {
+            const c = str[i]; if (c === '(') depth++; if (c === ')') depth--;
+            if (c === ',' && depth === 0) { parts.push(cur.trim()); cur = ''; } else cur += c;
+        }
+        if (cur.trim()) parts.push(cur.trim());
+
+        for (const s of parts) {
+            const inset = s.includes('inset');
+            // Extract color first, then strip it
+            const colorM = s.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\))/);
+            const color = colorM ? colorM[0] : 'rgba(0,0,0,0.3)';
+            let stripped = colorM ? s.replace(colorM[0], '') : s;
+            const nums = stripped.match(/[-+]?\d*\.?\d+(px|em|rem|vw|vh|%)?/g) || [];
+            if (nums.length >= 2) {
+                results.push({ inset, x: parseFloat(nums[0])||0, y: parseFloat(nums[1])||0, blur: parseFloat(nums[2])||0, spread: parseFloat(nums[3])||0, color });
+            }
+        }
+        return results;
+    }
+
+    // ─── Border ───
+    _renderBorder(style, x, y, w, h, br) {
+        const bw = Math.max(parseFloat(style.borderTopWidth)||0, parseFloat(style.borderRightWidth)||0, parseFloat(style.borderBottomWidth)||0, parseFloat(style.borderLeftWidth)||0);
+        if (bw < 0.5) return '';
+        const bs = style.borderTopStyle; if (bs === 'none') return '';
+        const bc = style.borderTopColor;
+        const off = bw/2;
+        const offBR = { tl: Math.max(0, br.tl-off), tr: Math.max(0, br.tr-off), br: Math.max(0, br.br-off), bl: Math.max(0, br.bl-off) };
+        let dash = '';
+        if (bs === 'dashed') dash = ` stroke-dasharray="${bw*3} ${bw*2}"`;
+        else if (bs === 'dotted') dash = ` stroke-dasharray="${bw} ${bw}"`;
+        const d = this._rrPath(x+off, y+off, w-bw, h-bw, offBR);
+        return `<path d="${d}" fill="none" stroke="${bc}" stroke-width="${bw}"${dash}/>`;
+    }
+
+    // ─── Text ───
+    _extractText(el) {
+        const parts = [];
+        for (const node of el.childNodes) {
+            if (node.nodeType === 3) {
+                const t = node.textContent.trim();
+                if (t) parts.push({ text: t });
+            }
+        }
+        return parts;
+    }
+
+    _renderText(text, style, x, y, w, h, win) {
+        if (!text.trim()) return '';
+        const fontSize = parseFloat(style.fontSize) || 16;
+        const fontFamily = style.fontFamily.replace(/['"]/g, '');
+        const fontWeight = style.fontWeight;
+        const color = style.color;
+        const textAlign = style.textAlign || 'start';
+        const direction = style.direction || 'ltr';
+        const lineHeight = parseFloat(style.lineHeight) || fontSize * 1.3;
+        const baselineY = this.r(y + fontSize * 0.82);
+
+        let textAnchor = 'start', textX = x;
+        if (textAlign === 'center') { textAnchor = 'middle'; textX = this.r(x + w/2); }
+        else if (textAlign === 'right' || textAlign === 'end') { textAnchor = 'end'; textX = this.r(x + w); }
+        else if (direction === 'rtl' && textAlign === 'start') { textAnchor = 'end'; textX = this.r(x + w); }
+
+        // Handle multi-line text (split by \n from <br> handling)
+        const lines = text.split('\n');
+        let svg = '';
+        for (let i = 0; i < lines.length; i++) {
+            const lineY = this.r(baselineY + i * lineHeight);
+            const escaped = this.escHtml(lines[i]);
+            svg += `<text x="${textX}" y="${lineY}" fill="${color}" font-family="${fontFamily}" font-size="${fontSize}" text-anchor="${textAnchor}" font-weight="${fontWeight}" direction="${direction}">${escaped}</text>`;
+        }
+        return svg;
+    }
+
+    // ─── SVG Icon ───
+    _renderSVGIcon(el, x, y, w, h, style) {
+        const clone = el.cloneNode(true);
+        clone.removeAttribute('class'); clone.removeAttribute('style');
+        clone.setAttribute('x', x); clone.setAttribute('y', y);
+        clone.setAttribute('width', w); clone.setAttribute('height', h);
+        return clone.outerHTML;
+    }
+
+    // ─── Image ───
+    _renderImage(el, x, y, w, h, style, name) {
+        const src = el.src || el.getAttribute('src');
+        if (!src) return '';
+        const imgId = `img-${this._imageQueue.length}`;
+        this._imageQueue.push({ id: imgId, src, x, y, w, h, style, name });
+        return `<!--IMG:${imgId}-->`;
+    }
+
+    async _processImages() {
+        for (const img of this._imageQueue) {
+            try {
+                const b64 = await this._loadImage(img.src);
+                if (b64) {
+                    const br = this._borderRadius(img.style, img.w, img.h);
+                    const hasClip = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
+                    let svg;
+                    if (hasClip) {
+                        const clipId = `imgclip-${this.defsCounter++}`;
+                        const d = this._rrPath(img.x, img.y, img.w, img.h, br);
+                        this.defsList.push(`<clipPath id="${clipId}"><path d="${d}"/></clipPath>`);
+                        svg = `<g clip-path="url(#${clipId})"><image x="${img.x}" y="${img.y}" width="${img.w}" height="${img.h}" href="${b64}"/></g>`;
+                    } else {
+                        svg = `<image x="${img.x}" y="${img.y}" width="${img.w}" height="${img.h}" href="${b64}"/>`;
+                    }
+                    this._imageReplacements.push({ id: img.id, svg });
+                }
+            } catch(e) { console.warn('Image failed:', img.src); }
+        }
+    }
+
+    async _loadImage(src) {
+        // Try direct fetch
+        try {
+            const resp = await fetch(src, { mode: 'cors', credentials: 'omit' });
+            if (resp.ok) { const blob = await resp.blob(); return await this._blobToB64(blob); }
+        } catch(e) {}
+        // Try canvas
+        return new Promise(resolve => {
+            try {
+                const img = new Image(); img.crossOrigin = 'anonymous';
+                img.onload = () => {
+                    const c = document.createElement('canvas');
+                    c.width = img.naturalWidth||img.width; c.height = img.naturalHeight||img.height;
+                    c.getContext('2d').drawImage(img, 0, 0);
+                    resolve(c.toDataURL('image/png'));
+                };
+                img.onerror = () => resolve(null);
+                img.src = src;
+                setTimeout(() => resolve(null), 8000);
+            } catch(e) { resolve(null); }
         });
     }
 
-    function downloadSVG() {
-        if (!currentSVG) return;
-        const blob = new Blob([currentSVG], { type: 'image/svg+xml' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = 'figma-design.svg';
-        a.click();
-        URL.revokeObjectURL(url);
+    _blobToB64(blob) {
+        return new Promise(resolve => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = () => resolve(null);
+            reader.readAsDataURL(blob);
+        });
     }
 
-    function updateStatus(text, classes) {
-        const pill = document.getElementById('status-pill');
-        pill.textContent = text;
-        pill.className = `status-pill text-xs px-3 py-1 rounded-full border ${classes}`;
+    // ─── Helpers ───
+    _borderRadius(style, w, h) {
+        return {
+            tl: this._parseBR(style.borderTopLeftRadius, w, h),
+            tr: this._parseBR(style.borderTopRightRadius, w, h),
+            br: this._parseBR(style.borderBottomRightRadius, w, h),
+            bl: this._parseBR(style.borderBottomLeftRadius, w, h),
+        };
+    }
+    _parseBR(v, w, h) { if (!v || v === '0px') return 0; const n = parseFloat(v.split(/\s+/)[0])||0; return Math.min(n, w/2, h/2); }
+    _parseBR2(v, w, h) { const parts = v.split(/\s+/); return { x: Math.min(parseFloat(parts[0])||0, w/2), y: Math.min(parseFloat(parts[1]||parts[0])||0, h/2) }; }
+
+    _rect(x, y, w, h, br, fill, extra = '') {
+        if (w < 0.5 || h < 0.5) return '';
+        const rx = Math.min(br.tl, w/2, h/2);
+        if (br.tl === br.tr && br.tr === br.br && br.br === br.bl)
+            return `<rect x="${x}" y="${y}" width="${w}" height="${h}"${rx > 0 ? ` rx="${this.r(rx)}" ry="${this.r(rx)}"` : ''} fill="${fill}"${extra}/>`;
+        return `<path d="${this._rrPath(x, y, w, h, br)}" fill="${fill}"${extra}/>`;
     }
 
-    function updateBadge(layers, size) {
-        document.getElementById('layer-count').textContent = `${layers} طبقة`;
-        document.getElementById('size-badge').textContent = size;
+    _rrPath(x, y, w, h, r) {
+        const tl=Math.min(r.tl,w/2,h/2), tr=Math.min(r.tr,w/2,h/2), br_=Math.min(r.br,w/2,h/2), bl=Math.min(r.bl,w/2,h/2);
+        return `M${x+tl},${y} L${x+w-tr},${y}${tr>0?`Q${x+w},${y} ${x+w},${y+tr}`:`L${x+w},${y}`} L${x+w},${y+h-br_}${br_>0?`Q${x+w},${y+h} ${x+w-br_},${y+h}`:`L${x+w},${y+h}`} L${x+bl},${y+h}${bl>0?`Q${x},${y+h} ${x},${y+h-bl}`:`L${x},${y+h}`} L${x},${y+tl}${tl>0?`Q${x},${y} ${x+tl},${y}`:`L${x},${y}`} Z`;
     }
 
-    function showProgress(show) {
-        document.getElementById('progress-bar').classList.toggle('hidden', !show);
+    _addClip(x, y, w, h, br) {
+        const id = `clip-${this.defsCounter++}`;
+        this.defsList.push(`<clipPath id="${id}"><path d="${this._rrPath(x, y, w, h, br)}"/></clipPath>`);
+        return id;
     }
 
-    function setProgress(pct) {
-        document.getElementById('progress-fill').style.width = pct + '%';
+    _isContainer(el) {
+        return ['div','section','main','header','footer','nav','article','aside','form','ul','ol','table','body'].includes(el.tagName.toLowerCase());
     }
 
-    let previewTimeout;
-    document.getElementById('html-input').addEventListener('input', () => {
-        clearTimeout(previewTimeout);
-        previewTimeout = setTimeout(updatePreview, 300);
-    });
-
-    document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
-            e.preventDefault();
-            convertNow();
+    _layerName(el) {
+        if (el.id) return this._clean(el.id);
+        if (el.className && typeof el.className === 'string') {
+            const c = el.className.split(/\s+/).find(s => !s.startsWith('css-'));
+            if (c) return this._clean(c);
         }
-    });
+        const tag = el.tagName.toLowerCase();
+        const map = { h1:'Heading',h2:'Heading',h3:'Heading',p:'Paragraph',a:'Link',button:'Button',img:'Image',svg:'Icon',span:'Text' };
+        return `${map[tag]||tag.charAt(0).toUpperCase()+tag.slice(1)}-${++this.layerCounter}`;
+    }
 
-    window.addEventListener('load', () => {
-        loadSample();
-    });
-    </script>
+    _clean(n) { return n.replace(/[#.]/g,'').replace(/[^a-zA-Z0-9\u0600-\u06FF_-]/g,'-').replace(/-+/g,'-').replace(/^-|-$/g,'') || `Layer-${++this.layerCounter}`; }
+
+    r(v) { const f = Math.pow(10, this.precision); return Math.round(v * f) / f; }
+
+    escHtml(s) { return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+    esc(s) { return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+    _buildSVG(content) {
+        let final = content;
+        for (const rep of this._imageReplacements) final = final.replace(`<!--IMG:${rep.id}-->`, rep.svg);
+
+        const defs = this.defsList.join('\n    ');
+        return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="${this.svgWidth}" height="${this.svgHeight}" viewBox="0 0 ${this.svgWidth} ${this.svgHeight}">
+  <defs>
+    ${defs}
+  </defs>
+${final}
+</svg>`;
+    }
+}
+
+// ═══════════════════════════════════════════
+// UI
+// ═══════════════════════════════════════════
+const converter = new FigmaSVGConverter();
+let currentSVG = '';
+const sampleHTML = `<div style="max-width:420px;margin:40px auto;font-family:'Cairo',sans-serif;direction:rtl">\n  <div style="background:linear-gradient(135deg,#667eea 0%,#764ba2 100%);border-radius:20px;padding:32px;box-shadow:0 20px 60px rgba(102,126,234,0.4)">\n    <h2 style="color:white;margin:0 0 12px;font-size:20px;font-weight:700">كورس التصميم الاحترافي</h2>\n    <p style="color:rgba(255,255,255,0.8);margin:0 0 20px;font-size:14px">تعلّم Figma من الصفر للاحتراف</p>\n    <button style="width:100%;background:#fbbf24;color:#1a1a2e;border:none;border-radius:12px;padding:14px 24px;font-size:16px;font-weight:700;font-family:inherit;box-shadow:0 4px 15px rgba(251,191,36,0.4)">🚀 سجّل الآن</button>\n  </div>\n</div>`;
+
+function loadSample() { document.getElementById('html-input').value = sampleHTML; }
+function clearEditor() { document.getElementById('html-input').value=''; document.getElementById('preview-content').innerHTML=''; document.getElementById('preview-content').classList.add('hidden'); document.getElementById('preview-placeholder').classList.remove('hidden'); document.getElementById('svg-code').textContent=''; document.getElementById('layers-tree').innerHTML=''; currentSVG=''; document.getElementById('btn-copy').classList.add('hidden'); document.getElementById('btn-download').classList.add('hidden'); setStatus('جاهز','bg-slate-800 text-slate-400 border-slate-700'); }
+
+async function convertNow() {
+    const html = document.getElementById('html-input').value.trim();
+    if (!html) return alert('الرجاء إدخال كود HTML');
+    setStatus('جاري التحويل...','bg-yellow-900 text-yellow-300 border-yellow-600');
+    showProgress(true); setProgress(10);
+    try {
+        setProgress(30);
+        const svg = await converter.convert(html);
+        currentSVG = svg; setProgress(80);
+        // Preview
+        const parser = new DOMParser();
+        const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+        const svgEl = svgDoc.querySelector('svg');
+        if (svgEl) {
+            const pw = document.getElementById('panel-preview').clientWidth - 32;
+            const ph = document.getElementById('panel-preview').clientHeight - 32;
+            const sw = parseFloat(svgEl.getAttribute('width'))||400;
+            const sh = parseFloat(svgEl.getAttribute('height'))||300;
+            const scale = Math.min(pw/sw, ph/sh, 1);
+            svgEl.setAttribute('width', sw*scale); svgEl.setAttribute('height', sh*scale);
+            svgEl.style.maxWidth = '100%'; svgEl.style.height = 'auto';
+            document.getElementById('preview-content').innerHTML = '';
+            document.getElementById('preview-content').appendChild(svgEl);
+            document.getElementById('preview-content').classList.remove('hidden');
+            document.getElementById('preview-placeholder').classList.add('hidden');
+        }
+        document.getElementById('svg-code').textContent = svg.replace(/>/g,'>\n').replace(/\n\n+/g,'\n').trim();
+        updateLayers(svg);
+        const lc = (svg.match(/<g id="/g)||[]).length;
+        document.getElementById('layer-count').textContent = `${lc} طبقة`;
+        document.getElementById('size-badge').textContent = `${converter.svgWidth}×${converter.svgHeight}`;
+        document.getElementById('btn-copy').classList.remove('hidden');
+        document.getElementById('btn-download').classList.remove('hidden');
+        setProgress(100); setStatus('تم التحويل ✅','bg-green-900 text-green-300 border-green-600');
+        switchTab('preview');
+    } catch(e) { console.error(e); setStatus('خطأ: '+e.message,'bg-red-900 text-red-300 border-red-600'); }
+    finally { setTimeout(()=>showProgress(false),500); }
+}
+
+function updateLayers(svg) {
+    const doc = new DOMParser().parseFromString(svg,'image/svg+xml');
+    let h = '<div class="space-y-0.5 text-xs">';
+    h += buildTree(doc.querySelector('svg'), 0);
+    h += '</div>';
+    document.getElementById('layers-tree').innerHTML = h;
+}
+
+function buildTree(el, depth) {
+    let h = '';
+    for (const child of el.children) {
+        if (child.tagName === 'defs') continue;
+        if (child.tagName === 'rect' && child.getAttribute('fill') === 'transparent') continue;
+        const id = child.getAttribute('id')||'';
+        const type = child.getAttribute('data-type')||child.tagName;
+        const indent = depth * 16;
+        if (child.tagName === 'g') {
+            const icon = type === 'Frame' ? '▣' : '◈';
+            h += `<div style="padding-right:${indent}px" class="flex items-center gap-1 py-0.5 px-2 rounded hover:bg-slate-800"><span class="text-indigo-400">${icon}</span><span class="text-slate-200">${id||type}</span><span class="text-slate-600 mr-auto text-[10px]">${type}</span></div>`;
+            h += buildTree(child, depth+1);
+        } else {
+            const icon = child.tagName==='text'?'T':child.tagName==='image'?'🖼':'▪';
+            h += `<div style="padding-right:${indent+16}px" class="text-slate-500 py-0.5 px-2"><span>${icon}</span> ${child.tagName}${id?': '+id:''}</div>`;
+        }
+    }
+    return h;
+}
+
+function switchTab(tab) {
+    document.getElementById('panel-preview').classList.toggle('hidden',tab!=='preview');
+    document.getElementById('panel-svg').classList.toggle('hidden',tab!=='svg');
+    document.getElementById('panel-layers').classList.toggle('hidden',tab!=='layers');
+    document.getElementById('tab-preview').className = tab==='preview'?'tab-active px-3 py-1 rounded text-xs font-semibold transition':'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
+    document.getElementById('tab-svg').className = tab==='svg'?'tab-active px-3 py-1 rounded text-xs font-semibold transition':'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
+    document.getElementById('tab-layers').className = tab==='layers'?'tab-active px-3 py-1 rounded text-xs font-semibold transition':'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
+}
+
+function copySVG() { if(!currentSVG)return; navigator.clipboard.writeText(currentSVG).then(()=>{const b=document.getElementById('btn-copy');b.textContent='✅';setTimeout(()=>b.textContent='نسخ',2000);}); }
+function downloadSVG() { if(!currentSVG)return; const b=new Blob([currentSVG],{type:'image/svg+xml'}); const u=URL.createObjectURL(b); const a=document.createElement('a'); a.href=u; a.download='figma-design.svg'; a.click(); URL.revokeObjectURL(u); }
+
+function setStatus(t,c) { const p=document.getElementById('status-pill'); p.textContent=t; p.className=`text-xs px-2.5 py-0.5 rounded-full border ${c}`; }
+function showProgress(s) { document.getElementById('progress-bar').classList.toggle('hidden',!s); }
+function setProgress(p) { document.getElementById('progress-fill').style.width=p+'%'; }
+
+document.getElementById('html-input').addEventListener('keydown',e => { if((e.ctrlKey||e.metaKey)&&e.key==='Enter'){e.preventDefault();convertNow();} });
+window.addEventListener('load', loadSample);
+</script>
 </body>
 </html>
