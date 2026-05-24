@@ -1,0 +1,1337 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>محول HTML إلى SVG لـ Figma</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700&family=Inter:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;600;700&display=swap');
+
+        * { box-sizing: border-box; }
+        body { font-family: 'Cairo', 'Inter', sans-serif; background: #0f172a; color: #e2e8f0; overflow: hidden; height: 100vh; }
+
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e293b; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: #475569; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+
+        .editor-area {
+            font-family: 'Fira Code', 'JetBrains Mono', 'Consolas', monospace;
+            tab-size: 2;
+            line-height: 1.6;
+        }
+
+        .preview-frame {
+            background-image: 
+                linear-gradient(45deg, #1e293b 25%, transparent 25%),
+                linear-gradient(-45deg, #1e293b 25%, transparent 25%),
+                linear-gradient(45deg, transparent 75%, #1e293b 75%),
+                linear-gradient(-45deg, transparent 75%, #1e293b 75%);
+            background-size: 16px 16px;
+            background-position: 0 0, 0 8px, 8px -8px, -8px 0px;
+            background-color: #0f172a;
+        }
+
+        #render-container {
+            position: absolute;
+            left: -9999px;
+            top: -9999px;
+            visibility: hidden;
+            pointer-events: none;
+        }
+
+        #render-container * {
+            pointer-events: none !important;
+        }
+
+        .status-pill {
+            transition: all 0.3s ease;
+        }
+
+        .btn-convert {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            transition: all 0.2s ease;
+        }
+        .btn-convert:hover {
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px rgba(99, 102, 241, 0.4);
+        }
+        .btn-convert:active { transform: translateY(0); }
+
+        .btn-secondary {
+            background: #1e293b;
+            border: 1px solid #334155;
+            transition: all 0.2s ease;
+        }
+        .btn-secondary:hover {
+            background: #334155;
+            border-color: #475569;
+        }
+
+        .panel-header {
+            background: #1e293b;
+            border-bottom: 1px solid #334155;
+        }
+
+        .tab-active {
+            background: #6366f1;
+            color: white;
+        }
+        .tab-inactive {
+            background: transparent;
+            color: #94a3b8;
+        }
+        .tab-inactive:hover {
+            color: #e2e8f0;
+            background: #334155;
+        }
+
+        .svg-output {
+            font-family: 'Fira Code', 'Consolas', monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            color: #a5f3fc;
+        }
+
+        .progress-bar {
+            height: 3px;
+            background: #1e293b;
+            border-radius: 2px;
+            overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #6366f1, #8b5cf6);
+            transition: width 0.3s ease;
+        }
+
+        .layer-badge {
+            background: #1e293b;
+            color: #94a3b8;
+            font-size: 11px;
+            padding: 2px 8px;
+            border-radius: 4px;
+            border: 1px solid #334155;
+        }
+    </style>
+</head>
+<body class="flex flex-col h-screen">
+
+    <!-- Top Bar -->
+    <header class="flex items-center justify-between px-4 py-3 bg-slate-900/80 backdrop-blur border-b border-slate-700/50 shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
+                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v18"/><rect x="3" y="8" width="18" height="8" rx="1"/><path d="M3 12h18"/></svg>
+            </div>
+            <div>
+                <h1 class="text-lg font-bold text-white leading-tight">محرك Figma المتقدم</h1>
+                <p class="text-xs text-slate-400">HTML → SVG بطبقات منظمة — الإصدار 10.0</p>
+            </div>
+        </div>
+        <div class="flex items-center gap-2">
+            <span id="status-pill" class="status-pill text-xs px-3 py-1 rounded-full bg-slate-800 text-slate-400 border border-slate-600">جاهز</span>
+            <span id="layer-count" class="layer-badge">0 طبقة</span>
+            <span id="size-badge" class="layer-badge">—</span>
+        </div>
+    </header>
+
+    <!-- Main Content -->
+    <div class="flex flex-1 overflow-hidden">
+
+        <!-- Left Panel: Code Editor -->
+        <div class="flex flex-col w-1/2 border-l border-slate-700/50">
+            <div class="panel-header px-4 py-2 flex items-center justify-between shrink-0">
+                <div class="flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6366f1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                    <span class="text-sm font-semibold text-slate-300">كود HTML</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="loadSample()" class="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 transition">نموذج</button>
+                    <button onclick="clearEditor()" class="text-xs px-2 py-1 rounded bg-slate-700 text-slate-300 hover:bg-slate-600 transition">مسح</button>
+                </div>
+            </div>
+            <div class="flex-1 overflow-hidden relative">
+                <textarea id="html-input" class="editor-area w-full h-full p-4 bg-slate-950 text-slate-200 resize-none focus:outline-none text-sm" dir="ltr" spellcheck="false" placeholder="الصق كود HTML هنا..."></textarea>
+            </div>
+        </div>
+
+        <!-- Right Panel: Preview + SVG Output -->
+        <div class="flex flex-col w-1/2 overflow-hidden">
+            <!-- Tabs -->
+            <div class="panel-header px-4 py-2 flex items-center justify-between shrink-0">
+                <div class="flex gap-1">
+                    <button id="tab-preview" onclick="switchTab('preview')" class="tab-active px-3 py-1 rounded text-xs font-semibold transition">معاينة</button>
+                    <button id="tab-svg" onclick="switchTab('svg')" class="tab-inactive px-3 py-1 rounded text-xs font-semibold transition">كود SVG</button>
+                    <button id="tab-layers" onclick="switchTab('layers')" class="tab-inactive px-3 py-1 rounded text-xs font-semibold transition">الطبقات</button>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button onclick="convertNow()" class="btn-convert px-4 py-1.5 rounded-lg text-xs font-bold text-white flex items-center gap-1.5">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></svg>
+                        تحويل إلى SVG
+                    </button>
+                    <button id="btn-copy" onclick="copySVG()" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline ml-1"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        نسخ
+                    </button>
+                    <button id="btn-download" onclick="downloadSVG()" class="btn-secondary px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-300 hidden">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="inline ml-1"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                        تحميل
+                    </button>
+                </div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div id="progress-bar" class="progress-bar hidden">
+                <div id="progress-fill" class="progress-bar-fill" style="width: 0%"></div>
+            </div>
+
+            <!-- Preview Panel -->
+            <div id="panel-preview" class="flex-1 overflow-auto p-4 preview-frame">
+                <div class="flex items-center justify-center min-h-full">
+                    <div id="preview-placeholder" class="text-center text-slate-500">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="mx-auto mb-3 text-slate-600"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                        <p class="text-sm">الصق كود HTML ثم اضغط <strong class="text-indigo-400">تحويل</strong></p>
+                    </div>
+                    <div id="preview-content" class="hidden"></div>
+                </div>
+            </div>
+
+            <!-- SVG Code Panel -->
+            <div id="panel-svg" class="flex-1 overflow-auto hidden">
+                <pre id="svg-code" class="svg-output p-4 m-0 whitespace-pre-wrap break-all bg-slate-950 min-h-full"></pre>
+            </div>
+
+            <!-- Layers Panel -->
+            <div id="panel-layers" class="flex-1 overflow-auto hidden bg-slate-950 p-4">
+                <div id="layers-tree" class="text-sm font-mono text-slate-300"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hidden render container -->
+    <div id="render-container"></div>
+
+    <script>
+    // ===================================================================
+    // HTML → SVG Conversion Engine (Figma-Optimized)
+    // ===================================================================
+
+    class FigmaSVGConverter {
+        constructor() {
+            this.defs = [];
+            this.defsCounter = 0;
+            this.layerCounter = 0;
+            this.svgWidth = 0;
+            this.svgHeight = 0;
+            this.imagesQueue = [];
+            this.convertOptions = {
+                embedImages: true,
+                scale: 1,
+                precision: 2,
+            };
+        }
+
+        // ------------------------------------------------------------------
+        // Main Entry Point
+        // ------------------------------------------------------------------
+        async convert(htmlString, containerEl) {
+            this.defs = [];
+            this.defsCounter = 0;
+            this.layerCounter = 0;
+            this.imagesQueue = [];
+
+            // Render HTML in hidden container
+            const rc = document.getElementById('render-container');
+            rc.innerHTML = htmlString;
+
+            // Wait for images and fonts to load
+            await this.waitForResources(rc);
+
+            // Measure root
+            const root = rc.firstElementChild || rc;
+            const rootRect = root.getBoundingClientRect();
+
+            this.svgWidth = Math.ceil(rootRect.width);
+            this.svgHeight = Math.ceil(rootRect.height);
+
+            // Process all nodes
+            let svgContent = this.processNode(rc, rootRect);
+
+            // Process queued images (async base64)
+            await this.processImages();
+
+            // Build final SVG
+            return this.buildSVG(svgContent);
+        }
+
+        // ------------------------------------------------------------------
+        // Wait for resources (images, fonts)
+        // ------------------------------------------------------------------
+        async waitForResources(container) {
+            const images = container.querySelectorAll('img');
+            const fontPromises = document.fonts ? document.fonts.ready : Promise.resolve();
+
+            const imgPromises = Array.from(images).map(img => {
+                return new Promise((resolve) => {
+                    if (img.complete) { resolve(); return; }
+                    img.onload = resolve;
+                    img.onerror = resolve;
+                    // Timeout after 5s
+                    setTimeout(resolve, 5000);
+                });
+            });
+
+            await Promise.all([fontPromises, ...imgPromises]);
+        }
+
+        // ------------------------------------------------------------------
+        // Process a single DOM node and its children
+        // ------------------------------------------------------------------
+        processNode(node, rootRect) {
+            let parts = [];
+
+            // Get child elements (not text nodes — we handle those per-element)
+            const children = Array.from(node.children || []);
+
+            for (const child of children) {
+                if (!this.isVisible(child)) continue;
+
+                const layerName = this.getLayerName(child);
+                const rect = child.getBoundingClientRect();
+                const styles = getComputedStyle(child);
+
+                // Position relative to root container
+                const x = this.round(rect.left - rootRect.left);
+                const y = this.round(rect.top - rootRect.top);
+                const w = this.round(rect.width);
+                const h = this.round(rect.height);
+
+                // Skip zero-size elements
+                if (w < 0.5 && h < 0.5) continue;
+
+                let groupContent = '';
+
+                // 1. Shadow filter (applied to background)
+                const shadowFilterId = this.createShadowFilter(styles, layerName);
+
+                // 2. Border radius values
+                const br = this.getBorderRadius(styles, w, h);
+
+                // 3. Overflow hidden → clipPath
+                const clipId = this.createClipPath(styles, x, y, w, h, br, layerName);
+
+                // 4. Background (solid color, gradient, or image)
+                const bgSvg = this.createBackground(styles, x, y, w, h, br, shadowFilterId, clipId, layerName);
+                if (bgSvg) groupContent += bgSvg;
+
+                // 5. Border
+                const borderSvg = this.createBorder(styles, x, y, w, h, br, layerName);
+                if (borderSvg) groupContent += borderSvg;
+
+                // 6. SVG icons (inline SVG)
+                if (child.tagName.toLowerCase() === 'svg') {
+                    groupContent += this.createSVGIcon(child, x, y, w, h, styles);
+                }
+
+                // 7. IMG elements
+                if (child.tagName.toLowerCase() === 'img') {
+                    groupContent += this.createImageElement(child, x, y, w, h, styles, layerName);
+                }
+
+                // 8. Text content (direct text nodes only)
+                const directText = this.getDirectText(child);
+                if (directText.trim()) {
+                    groupContent += this.createText(directText, styles, x, y, w, h);
+                }
+
+                // 9. Opacity
+                const opacity = parseFloat(styles.opacity);
+                const opacityAttr = (opacity < 1 && opacity > 0) ? ` opacity="${opacity}"` : '';
+
+                // 10. Transform
+                const transform = this.getTransform(styles, child);
+
+                // 11. Recurse into children
+                const childContent = this.processNode(child, rootRect);
+                if (childContent.trim()) {
+                    groupContent += childContent;
+                }
+
+                if (groupContent.trim()) {
+                    const type = this.isContainer(child) ? 'Frame' : 'Group';
+                    parts.push(`<g id="${this.escapeAttr(layerName)}" data-type="${type}"${opacityAttr}${transform}>${groupContent}</g>`);
+                }
+            }
+
+            return parts.join('\n');
+        }
+
+        // ------------------------------------------------------------------
+        // Background (solid, gradient, image)
+        // ------------------------------------------------------------------
+        createBackground(styles, x, y, w, h, br, shadowFilterId, clipId, layerName) {
+            const bgImage = styles.backgroundImage;
+            const bgColor = styles.backgroundColor;
+            const hasGradient = bgImage && bgImage !== 'none';
+            const hasBgColor = bgColor && bgColor !== 'rgba(0, 0, 0, 0)' && bgColor !== 'transparent';
+
+            let svg = '';
+            let filterAttr = shadowFilterId ? ` filter="url(#${shadowFilterId})"` : '';
+            let clipAttr = clipId ? ` clip-path="url(#${clipId})"` : '';
+
+            if (hasGradient) {
+                const gradientId = this.createGradient(bgImage, w, h, layerName);
+                if (gradientId) {
+                    svg += this.createRect(x, y, w, h, br, `url(#${gradientId})`, filterAttr, clipAttr);
+                }
+            } else if (hasBgColor) {
+                svg += this.createRect(x, y, w, h, br, bgColor, filterAttr, clipAttr);
+            } else if (shadowFilterId || clipId) {
+                // Element has shadow or clip but no bg — create transparent bg for shadow
+                if (shadowFilterId) {
+                    svg += this.createRect(x, y, w, h, br, bgColor || 'transparent', filterAttr, clipAttr);
+                }
+            }
+
+            return svg;
+        }
+
+        // ------------------------------------------------------------------
+        // Create a rect or path (for border-radius)
+        // ------------------------------------------------------------------
+        createRect(x, y, w, h, br, fill, filterAttr = '', clipAttr = '') {
+            if (br.tl === br.tr && br.tr === br.br && br.br === bl && fill !== 'transparent') {
+                // Uniform radius — use <rect>
+                const rx = this.round(Math.min(br.tl, w / 2, h / 2));
+                return `<rect x="${x}" y="${y}" width="${w}" height="${h}"${rx > 0 ? ` rx="${rx}" ry="${rx}"` : ''} fill="${fill}"${filterAttr}${clipAttr}/>`;
+            }
+            // Non-uniform radius — use <path>
+            const d = this.roundedRectPath(x, y, w, h, br);
+            return `<path d="${d}" fill="${fill}"${filterAttr}${clipAttr}/>`;
+        }
+
+        // ------------------------------------------------------------------
+        // Rounded rect path (supports per-corner radius)
+        // ------------------------------------------------------------------
+        roundedRectPath(x, y, w, h, r) {
+            // Clamp radius
+            const tl = Math.min(r.tl, w / 2, h / 2);
+            const tr = Math.min(r.tr, w / 2, h / 2);
+            const br = Math.min(r.br, w / 2, h / 2);
+            const bl = Math.min(r.bl, w / 2, h / 2);
+
+            return [
+                `M${x + tl},${y}`,
+                `L${x + w - tr},${y}`,
+                tr > 0 ? `Q${x + w},${y} ${x + w},${y + tr}` : `L${x + w},${y}`,
+                `L${x + w},${y + h - br}`,
+                br > 0 ? `Q${x + w},${y + h} ${x + w - br},${y + h}` : `L${x + w},${y + h}`,
+                `L${x + bl},${y + h}`,
+                bl > 0 ? `Q${x},${y + h} ${x},${y + h - bl}` : `L${x},${y + h}`,
+                `L${x},${y + tl}`,
+                tl > 0 ? `Q${x},${y} ${x + tl},${y}` : `L${x},${y}`,
+                'Z'
+            ].join(' ');
+        }
+
+        // ------------------------------------------------------------------
+        // Border
+        // ------------------------------------------------------------------
+        createBorder(styles, x, y, w, h, br, layerName) {
+            const bw = parseFloat(styles.borderTopWidth) || 0;
+            if (bw < 0.5) return '';
+
+            const bc = styles.borderTopColor;
+            const bs = styles.borderTopStyle; // solid, dashed, etc.
+
+            const offset = bw / 2;
+            const bx = x + offset;
+            const by = y + offset;
+            const bw2 = w - bw;
+            const bh2 = h - bw;
+
+            // Adjusted border radius
+            const bbr = {
+                tl: Math.max(0, br.tl - offset),
+                tr: Math.max(0, br.tr - offset),
+                br: Math.max(0, br.br - offset),
+                bl: Math.max(0, br.bl - offset),
+            };
+
+            let strokeDash = '';
+            if (bs === 'dashed') {
+                strokeDash = ` stroke-dasharray="${bw * 3} ${bw * 2}"`;
+            } else if (bs === 'dotted') {
+                strokeDash = ` stroke-dasharray="${bw} ${bw}"`;
+            }
+
+            const d = this.roundedRectPath(bx, by, bw2, bh2, bbr);
+            return `<path d="${d}" fill="none" stroke="${bc}" stroke-width="${bw}"${strokeDash}/>`;
+        }
+
+        // ------------------------------------------------------------------
+        // Shadow filter
+        // ------------------------------------------------------------------
+        createShadowFilter(styles, layerName) {
+            const shadow = styles.boxShadow;
+            if (!shadow || shadow === 'none') return null;
+
+            // Parse box-shadow (can have multiple shadows)
+            const shadows = this.parseBoxShadow(shadow);
+            if (shadows.length === 0) return null;
+
+            const id = `shadow-${this.defsCounter++}`;
+            let filters = '';
+
+            // We apply all shadows as a single filter
+            for (let i = 0; i < shadows.length; i++) {
+                const s = shadows[i];
+                const blur = Math.max(s.blur, 0.1);
+                const spread = s.spread || 0;
+                const dx = s.x;
+                const dy = s.y;
+                const color = s.color || 'rgba(0,0,0,0.3)';
+
+                // Expand filter region for blur
+                const blurExpand = blur + Math.abs(spread);
+
+                filters += `
+                    <feDropShadow in="SourceGraphic" dx="${this.round(dx)}" dy="${this.round(dy)}" stdDeviation="${this.round(blur / 3)}" flood-color="${color}" flood-opacity="1"/>`;
+            }
+
+            this.defs.push(`<filter id="${id}" x="-50%" y="-50%" width="200%" height="200%">${filters}</filter>`);
+            return id;
+        }
+
+        parseBoxShadow(shadowStr) {
+            const results = [];
+            // Split by comma for multiple shadows (but be careful with rgba commas)
+            // Use a smarter split
+            const shadows = [];
+            let current = '';
+            let parenDepth = 0;
+            for (let i = 0; i < shadowStr.length; i++) {
+                const c = shadowStr[i];
+                if (c === '(') parenDepth++;
+                if (c === ')') parenDepth--;
+                if (c === ',' && parenDepth === 0) {
+                    shadows.push(current.trim());
+                    current = '';
+                } else {
+                    current += c;
+                }
+            }
+            if (current.trim()) shadows.push(current.trim());
+
+            for (const s of shadows) {
+                // Parse: inset? offsetX offsetY blurRadius spreadRadius? color
+                const isInset = s.includes('inset');
+                const nums = s.match(/[-+]?\d*\.?\d+(px|em|rem|vw|vh|%)?/g) || [];
+                const colorMatch = s.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|\b[a-zA-Z]+\b(?=\s*$))/);
+
+                if (nums.length >= 2) {
+                    results.push({
+                        inset: isInset,
+                        x: parseFloat(nums[0]) || 0,
+                        y: parseFloat(nums[1]) || 0,
+                        blur: parseFloat(nums[2]) || 0,
+                        spread: parseFloat(nums[3]) || 0,
+                        color: colorMatch ? colorMatch[0] : 'rgba(0,0,0,0.3)',
+                    });
+                }
+            }
+            return results;
+        }
+
+        // ------------------------------------------------------------------
+        // ClipPath (for overflow:hidden and border-radius clipping)
+        // ------------------------------------------------------------------
+        createClipPath(styles, x, y, w, h, br, layerName) {
+            const overflow = styles.overflow;
+            const hasOverflow = overflow === 'hidden' || overflow === 'clip' || overflow === 'scroll';
+            const hasBr = br.tl > 0 || br.tr > 0 || br.br > 0 || br.bl > 0;
+
+            // Only create clipPath if we have overflow:hidden AND border-radius
+            // (plain overflow:hidden clips children via group clip)
+            if (!hasOverflow && !hasBr) return null;
+
+            const id = `clip-${this.defsCounter++}`;
+            const d = this.roundedRectPath(x, y, w, h, br);
+            this.defs.push(`<clipPath id="${id}"><path d="${d}"/></clipPath>`);
+            return id;
+        }
+
+        // ------------------------------------------------------------------
+        // Gradient
+        // ------------------------------------------------------------------
+        createGradient(bgImage, w, h, layerName) {
+            if (!bgImage || bgImage === 'none') return null;
+
+            // Parse linear-gradient
+            const lgMatch = bgImage.match(/linear-gradient\s*\(([^)]+(?:\([^)]*\))*[^)]*)\)/);
+            if (lgMatch) {
+                return this.createLinearGradient(lgMatch[1], w, h, layerName);
+            }
+
+            // Parse radial-gradient
+            const rgMatch = bgImage.match(/radial-gradient\s*\(([^)]+(?:\([^)]*\))*[^)]*)\)/);
+            if (rgMatch) {
+                return this.createRadialGradient(rgMatch[1], w, h, layerName);
+            }
+
+            return null;
+        }
+
+        createLinearGradient(argsStr, w, h, layerName) {
+            const id = `grad-${this.defsCounter++}`;
+
+            // Parse angle and color stops
+            let angle = 180; // default: top to bottom
+            let stops = [];
+
+            // Try to parse angle
+            const parts = this.splitGradientArgs(argsStr);
+
+            let firstPart = parts[0].trim();
+            if (firstPart.match(/^\d/)) {
+                // Angle in degrees
+                angle = parseFloat(firstPart) || 180;
+                parts.shift();
+            } else if (firstPart.includes('to ')) {
+                // Direction keyword
+                angle = this.directionToAngle(firstPart);
+                parts.shift();
+            }
+
+            // Parse color stops
+            for (const part of parts) {
+                const stop = this.parseColorStop(part.trim());
+                if (stop) stops.push(stop);
+            }
+
+            if (stops.length === 0) return null;
+
+            // Convert angle to SVG gradient coordinates
+            const angleRad = (angle - 90) * (Math.PI / 180);
+            const x1 = this.round(50 - Math.cos(angleRad) * 50, 2);
+            const y1 = this.round(50 - Math.sin(angleRad) * 50, 2);
+            const x2 = this.round(50 + Math.cos(angleRad) * 50, 2);
+            const y2 = this.round(50 + Math.sin(angleRad) * 50, 2);
+
+            let stopElements = stops.map(s =>
+                `<stop offset="${s.offset}%" stop-color="${s.color}"/>`
+            ).join('\n');
+
+            this.defs.push(`<linearGradient id="${id}" x1="${x1}%" y1="${y1}%" x2="${x2}%" y2="${y2}%" gradientUnits="userSpaceOnUse">${stopElements}</linearGradient>`);
+            return id;
+        }
+
+        createRadialGradient(argsStr, w, h, layerName) {
+            const id = `grad-${this.defsCounter++}`;
+            let stops = [];
+            const parts = this.splitGradientArgs(argsStr);
+
+            for (const part of parts) {
+                const stop = this.parseColorStop(part.trim());
+                if (stop) stops.push(stop);
+            }
+
+            if (stops.length === 0) return null;
+
+            let stopElements = stops.map(s =>
+                `<stop offset="${s.offset}%" stop-color="${s.color}"/>`
+            ).join('\n');
+
+            this.defs.push(`<radialGradient id="${id}" cx="50%" cy="50%" r="50%" gradientUnits="userSpaceOnUse">${stopElements}</radialGradient>`);
+            return id;
+        }
+
+        splitGradientArgs(str) {
+            const parts = [];
+            let current = '';
+            let parenDepth = 0;
+            for (let i = 0; i < str.length; i++) {
+                const c = str[i];
+                if (c === '(') parenDepth++;
+                if (c === ')') parenDepth--;
+                if (c === ',' && parenDepth === 0) {
+                    parts.push(current);
+                    current = '';
+                } else {
+                    current += c;
+                }
+            }
+            if (current.trim()) parts.push(current);
+            return parts;
+        }
+
+        parseColorStop(str) {
+            // e.g., "#fff 0%", "rgba(0,0,0,0.1) 50%", "#000"
+            const colorMatch = str.match(/(#[0-9a-fA-F]{3,8}|rgba?\([^)]+\)|hsla?\([^)]+\)|[a-zA-Z]+)/);
+            if (!colorMatch) return null;
+            const color = colorMatch[0];
+            const offsetMatch = str.match(/(\d+(?:\.\d+)?)%/);
+            const offset = offsetMatch ? parseFloat(offsetMatch[1]) : null;
+            return { color, offset: offset !== null ? offset : 0 };
+        }
+
+        directionToAngle(dir) {
+            const map = {
+                'to top': 0, 'to right': 90, 'to bottom': 180, 'to left': 270,
+                'to top right': 45, 'to top left': 315,
+                'to bottom right': 135, 'to bottom left': 225,
+            };
+            return map[dir] || 180;
+        }
+
+        // ------------------------------------------------------------------
+        // Text content
+        // ------------------------------------------------------------------
+        createText(text, styles, x, y, w, h) {
+            const fontSize = parseFloat(styles.fontSize) || 16;
+            const fontFamily = styles.fontFamily.replace(/['"]/g, '');
+            const fontWeight = styles.fontWeight;
+            const fontStyle = styles.fontStyle;
+            const color = styles.color;
+            const lineHeight = parseFloat(styles.lineHeight) || fontSize * 1.2;
+            const textAlign = styles.textAlign;
+            const textDecoration = styles.textDecoration;
+            const letterSpacing = parseFloat(styles.letterSpacing) || 0;
+            const direction = styles.direction || 'ltr';
+
+            // Calculate text position based on alignment
+            let textX = x;
+            let anchor = 'start';
+
+            if (textAlign === 'center') {
+                textX = x + w / 2;
+                anchor = 'middle';
+            } else if (textAlign === 'right' || (direction === 'rtl' && textAlign !== 'left')) {
+                textX = x + w;
+                anchor = 'end';
+            }
+
+            // Add padding offset
+            const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+            const paddingTop = parseFloat(styles.paddingTop) || 0;
+            textX += paddingLeft;
+
+            // Vertical position (text baseline)
+            const textY = y + paddingTop + fontSize;
+
+            // Handle multi-line text
+            const lines = text.split('\n').filter(l => l.trim());
+            if (lines.length === 0) return '';
+
+            let attrs = [
+                `x="${this.round(textX)}"`,
+                `fill="${color}"`,
+                `font-family="${fontFamily}"`,
+                `font-size="${this.round(fontSize)}"`,
+                `text-anchor="${anchor}"`,
+                `font-weight="${fontWeight}"`,
+            ];
+
+            if (fontStyle === 'italic') attrs.push('font-style="italic"');
+            if (letterSpacing > 0) attrs.push(`letter-spacing="${this.round(letterSpacing)}"`);
+            if (direction === 'rtl') attrs.push('direction="rtl"');
+            if (textDecoration.includes('underline')) attrs.push('text-decoration="underline"');
+
+            if (lines.length === 1) {
+                return `<text ${attrs.join(' ')} y="${this.round(textY)}">${this.escapeHtml(lines[0])}</text>`;
+            }
+
+            // Multi-line: use <tspan> with dy
+            const tspans = lines.map((line, i) => {
+                const dy = i === 0 ? 0 : this.round(lineHeight);
+                return `<tspan x="${this.round(textX)}" dy="${dy}">${this.escapeHtml(line)}</tspan>`;
+            }).join('');
+
+            return `<text ${attrs.join(' ')} y="${this.round(textY)}">${tspans}</text>`;
+        }
+
+        // ------------------------------------------------------------------
+        // Image element
+        // ------------------------------------------------------------------
+        createImageElement(imgEl, x, y, w, h, styles, layerName) {
+            const src = imgEl.src || imgEl.getAttribute('src');
+            if (!src) return '';
+
+            const br = this.getBorderRadius(styles, w, h);
+            const objectId = `img-${this.defsCounter++}`;
+
+            // Queue for async base64 conversion
+            this.imagesQueue.push({
+                id: objectId,
+                src: src,
+                x, y, w, h,
+                borderRadius: br,
+            });
+
+            // Placeholder — will be replaced after image loads
+            return `<!--IMAGE:${objectId}-->`;
+        }
+
+        async processImages() {
+            for (const img of this.imagesQueue) {
+                try {
+                    const base64 = await this.imageToBase64(img.src);
+                    const clipId = (img.borderRadius.tl > 0 || img.borderRadius.tr > 0 || img.borderRadius.br > 0 || img.borderRadius.bl > 0)
+                        ? this.createClipPathForImage(img) : null;
+
+                    const clipAttr = clipId ? ` clip-path="url(#${clipId})"` : '';
+                    const preserveAttr = ' preserveAspectRatio="xMidYMid meet"';
+
+                    const svgImg = `<image id="${img.id}" x="${img.x}" y="${img.y}" width="${img.w}" height="${img.h}" href="${base64}"${preserveAttr}${clipAttr}/>`;
+
+                    // Replace placeholder in defs or content
+                    this._imageReplacements = this._imageReplacements || [];
+                    this._imageReplacements.push({ id: img.id, svg: svgImg });
+                } catch (e) {
+                    console.warn('Failed to load image:', img.src, e);
+                }
+            }
+        }
+
+        createClipPathForImage(img) {
+            const id = `imgclip-${this.defsCounter++}`;
+            const d = this.roundedRectPath(img.x, img.y, img.w, img.h, img.borderRadius);
+            this.defs.push(`<clipPath id="${id}"><path d="${d}"/></clipPath>`);
+            return id;
+        }
+
+        async imageToBase64(url) {
+            try {
+                // Try proxy services to avoid CORS
+                const proxies = [
+                    (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+                    (u) => u, // Try direct first if same-origin
+                ];
+
+                for (const proxy of proxies) {
+                    try {
+                        const response = await fetch(proxy(url), { mode: 'cors' });
+                        if (response.ok) {
+                            const blob = await response.blob();
+                            return new Promise((resolve) => {
+                                const reader = new FileReader();
+                                reader.onloadend = () => resolve(reader.result);
+                                reader.onerror = () => resolve(url); // Fallback to URL
+                                reader.readAsDataURL(blob);
+                            });
+                        }
+                    } catch (e) {
+                        continue;
+                    }
+                }
+
+                // If all proxies fail, return original URL
+                return url;
+            } catch (e) {
+                return url;
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // SVG Icons (inline SVG elements)
+        // ------------------------------------------------------------------
+        createSVGIcon(svgEl, x, y, w, h, styles) {
+            // Clone the SVG element
+            const clone = svgEl.cloneNode(true);
+
+            // Set position and size
+            clone.setAttribute('x', x);
+            clone.setAttribute('y', y);
+            clone.setAttribute('width', w);
+            clone.setAttribute('height', h);
+
+            // Get computed fill and stroke
+            const fill = styles.fill;
+            const stroke = styles.stroke;
+            const strokeWidth = styles.strokeWidth;
+            const fillOpacity = styles.fillOpacity;
+
+            // Clean up: remove class and style attributes that reference external CSS
+            this.cleanSVGElement(clone, fill, stroke, strokeWidth);
+
+            // Remove id attributes to avoid conflicts
+            clone.removeAttribute('id');
+
+            return clone.outerHTML;
+        }
+
+        cleanSVGElement(el, fill, stroke, strokeWidth) {
+            // Remove class attributes (they reference external styles)
+            el.removeAttribute('class');
+
+            // Apply colors if they're not set inline
+            if (fill && fill !== 'none') {
+                if (!el.getAttribute('fill') || el.getAttribute('fill') === 'currentColor') {
+                    el.setAttribute('fill', fill);
+                }
+            }
+            if (stroke && stroke !== 'none') {
+                if (!el.getAttribute('stroke') || el.getAttribute('stroke') === 'currentColor') {
+                    el.setAttribute('stroke', stroke);
+                }
+            }
+
+            // Recurse into children
+            for (const child of el.children) {
+                this.cleanSVGElement(child, fill, stroke, strokeWidth);
+            }
+        }
+
+        // ------------------------------------------------------------------
+        // Helper utilities
+        // ------------------------------------------------------------------
+
+        isVisible(el) {
+            if (!el || el.nodeType !== 1) return false;
+            const style = getComputedStyle(el);
+            if (style.display === 'none') return false;
+            if (style.visibility === 'hidden') return false;
+            if (parseFloat(style.opacity) === 0) return false;
+            if (el.offsetWidth === 0 && el.offsetHeight === 0) return false;
+            return true;
+        }
+
+        isContainer(el) {
+            const containers = ['div', 'section', 'main', 'header', 'footer', 'nav', 'article', 'aside', 'main', 'form', 'fieldset', 'details', 'summary', 'dialog', 'figure', 'figcaption', 'ul', 'ol', 'li', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th', 'dl', 'dt', 'dd'];
+            return containers.includes(el.tagName.toLowerCase());
+        }
+
+        getLayerName(el) {
+            // Priority: data-layer-name > id > class > tag-based
+            if (el.dataset.layerName) return this.sanitizeName(el.dataset.layerName);
+            if (el.id) return this.sanitizeName(el.id);
+
+            if (el.className && typeof el.className === 'string') {
+                const classes = el.className.split(/\s+/).filter(c =>
+                    !c.match(/^(flex|grid|block|inline|hidden|visible|overflow|text-|bg-|p-|m-|w-|h-|rounded|border|shadow|gap-|items-|justify-|space-|font-)/)
+                );
+                if (classes.length > 0) {
+                    return this.sanitizeName(classes[0]) || this.getTagBasedName(el);
+                }
+            }
+
+            return this.getTagBasedName(el);
+        }
+
+        getTagBasedName(el) {
+            const tag = el.tagName.toLowerCase();
+            const map = {
+                'div': 'Frame', 'section': 'Section', 'main': 'Main',
+                'header': 'Header', 'footer': 'Footer', 'nav': 'Nav',
+                'article': 'Article', 'aside': 'Aside', 'form': 'Form',
+                'button': 'Button', 'a': 'Link', 'img': 'Image',
+                'svg': 'Icon', 'p': 'Paragraph', 'h1': 'Heading',
+                'h2': 'Heading', 'h3': 'Heading', 'h4': 'Heading',
+                'h5': 'Heading', 'h6': 'Heading', 'span': 'Text',
+                'input': 'Input', 'textarea': 'TextArea', 'select': 'Select',
+                'ul': 'List', 'ol': 'List', 'li': 'ListItem',
+                'table': 'Table', 'tr': 'TableRow', 'td': 'TableCell',
+                'th': 'TableHeader',
+            };
+            const base = map[tag] || tag.charAt(0).toUpperCase() + tag.slice(1);
+            return `${base}-${++this.layerCounter}`;
+        }
+
+        sanitizeName(name) {
+            // Clean up class names and ids for SVG
+            let clean = name
+                .replace(/[#.]/g, '')
+                .replace(/[^a-zA-Z0-9\u0600-\u06FF_-]/g, '-')
+                .replace(/-+/g, '-')
+                .replace(/^-|-$/g, '');
+            if (!clean) return `Layer-${++this.layerCounter}`;
+            return clean;
+        }
+
+        getBorderRadius(styles, w, h) {
+            return {
+                tl: this.parseBr(styles.borderTopLeftRadius, w, h),
+                tr: this.parseBr(styles.borderTopRightRadius, w, h),
+                br: this.parseBr(styles.borderBottomRightRadius, w, h),
+                bl: this.parseBr(styles.borderBottomLeftRadius, w, h),
+            };
+        }
+
+        parseBr(value, w, h) {
+            if (!value || value === '0px') return 0;
+            const parts = value.split(/\s+/);
+            const v = parseFloat(parts[0]) || 0;
+            // Clamp to half of smallest dimension
+            return Math.min(v, w / 2, h / 2);
+        }
+
+        getDirectText(el) {
+            let text = '';
+            for (const node of el.childNodes) {
+                if (node.nodeType === 3) { // Text node
+                    text += node.textContent;
+                }
+            }
+            return text;
+        }
+
+        getTransform(styles, el) {
+            const transform = styles.transform;
+            if (!transform || transform === 'none') return '';
+
+            // Parse CSS transform to SVG transform
+            // Handle common transforms
+            const matrixMatch = transform.match(/matrix\(([^)]+)\)/);
+            if (matrixMatch) {
+                const values = matrixMatch[1].split(',').map(v => parseFloat(v.trim()));
+                // matrix(a, b, c, d, e, f) → SVG transform
+                return ` transform="matrix(${values.join(' ')})"`;
+            }
+
+            const translateMatch = transform.match(/translate\(([^,)]+)(?:,\s*([^)]+))?\)/);
+            if (translateMatch) {
+                const tx = parseFloat(translateMatch[1]) || 0;
+                const ty = parseFloat(translateMatch[2]) || 0;
+                return ` transform="translate(${this.round(tx)},${this.round(ty)})"`;
+            }
+
+            const scaleMatch = transform.match(/scale\(([^,)]+)(?:,\s*([^)]+))?\)/);
+            if (scaleMatch) {
+                const sx = parseFloat(scaleMatch[1]) || 1;
+                const sy = parseFloat(scaleMatch[2]) || sx;
+                return ` transform="scale(${this.round(sx)},${this.round(sy)})"`;
+            }
+
+            const rotateMatch = transform.match(/rotate\(([^)]+)\)/);
+            if (rotateMatch) {
+                const angle = parseFloat(rotateMatch[1]) || 0;
+                return ` transform="rotate(${this.round(angle)})"`;
+            }
+
+            return '';
+        }
+
+        escapeHtml(str) {
+            return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+        }
+
+        escapeAttr(str) {
+            return str.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        }
+
+        round(val, decimals) {
+            decimals = decimals || this.convertOptions.precision;
+            const factor = Math.pow(10, decimals);
+            return Math.round(val * factor) / factor;
+        }
+
+        // ------------------------------------------------------------------
+        // Build final SVG string
+        // ------------------------------------------------------------------
+        buildSVG(content) {
+            // Replace image placeholders with actual SVG
+            let finalContent = content;
+            if (this._imageReplacements) {
+                for (const rep of this._imageReplacements) {
+                    finalContent = finalContent.replace(`<!--IMAGE:${rep.id}-->`, rep.svg);
+                }
+            }
+
+            const svg = `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink"
+     width="${this.svgWidth}" height="${this.svgHeight}" 
+     viewBox="0 0 ${this.svgWidth} ${this.svgHeight}">
+  <defs>
+${this.defs.map(d => '    ' + d).join('\n')}
+  </defs>
+  <rect width="${this.svgWidth}" height="${this.svgHeight}" fill="transparent"/>
+${finalContent}
+</svg>`;
+            return svg;
+        }
+    }
+
+    // ===================================================================
+    // UI Logic
+    // ===================================================================
+
+    const converter = new FigmaSVGConverter();
+    let currentSVG = '';
+    let currentTab = 'preview';
+
+    // Sample HTML
+    const sampleHTML = `<div style="max-width: 420px; margin: 40px auto; font-family: 'Cairo', sans-serif; direction: rtl;">
+  <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 20px; padding: 32px; box-shadow: 0 20px 60px rgba(102, 126, 234, 0.4);">
+    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 24px;">
+      <div style="width: 48px; height: 48px; background: rgba(255,255,255,0.2); border-radius: 12px; display: flex; align-items: center; justify-content: center;">
+        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+      </div>
+      <div>
+        <h2 style="color: white; margin: 0; font-size: 20px; font-weight: 700;">كورس التصميم الاحترافي</h2>
+        <p style="color: rgba(255,255,255,0.8); margin: 4px 0 0; font-size: 14px;">تعلّم Figma من الصفر للاحتراف</p>
+      </div>
+    </div>
+    <div style="background: rgba(255,255,255,0.15); backdrop-filter: blur(10px); border-radius: 16px; padding: 20px; margin-bottom: 20px;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+        <span style="color: rgba(255,255,255,0.7); font-size: 13px;">السعر</span>
+        <div>
+          <span style="color: rgba(255,255,255,0.5); text-decoration: line-through; font-size: 14px; margin-left: 8px;">$199</span>
+          <span style="color: white; font-size: 28px; font-weight: 800;">$49</span>
+        </div>
+      </div>
+      <div style="background: rgba(255,255,255,0.2); border-radius: 8px; height: 6px; overflow: hidden;">
+        <div style="background: #fbbf24; height: 100%; width: 75%; border-radius: 8px;"></div>
+      </div>
+      <p style="color: rgba(255,255,255,0.7); font-size: 12px; margin-top: 8px; text-align: center;">75% مكتمل — بقي 12 مقعد فقط!</p>
+    </div>
+    <button style="width: 100%; background: #fbbf24; color: #1a1a2e; border: none; border-radius: 12px; padding: 14px 24px; font-size: 16px; font-weight: 700; cursor: pointer; font-family: inherit; box-shadow: 0 4px 15px rgba(251, 191, 36, 0.4);">
+      🚀 سجّل الآن
+    </button>
+    <p style="color: rgba(255,255,255,0.5); text-align: center; font-size: 12px; margin-top: 12px;">ضمان استرداد كامل خلال 30 يوم</p>
+  </div>
+</div>`;
+
+    function loadSample() {
+        document.getElementById('html-input').value = sampleHTML;
+        updatePreview();
+    }
+
+    function clearEditor() {
+        document.getElementById('html-input').value = '';
+        document.getElementById('preview-content').innerHTML = '';
+        document.getElementById('preview-content').classList.add('hidden');
+        document.getElementById('preview-placeholder').classList.remove('hidden');
+        document.getElementById('svg-code').textContent = '';
+        document.getElementById('layers-tree').innerHTML = '';
+        currentSVG = '';
+        document.getElementById('btn-copy').classList.add('hidden');
+        document.getElementById('btn-download').classList.add('hidden');
+        updateStatus('جاهز', 'bg-slate-800 text-slate-400');
+        updateBadge(0, '—');
+    }
+
+    function updatePreview() {
+        const html = document.getElementById('html-input').value.trim();
+        const previewEl = document.getElementById('preview-content');
+        const placeholder = document.getElementById('preview-placeholder');
+
+        if (!html) {
+            previewEl.classList.add('hidden');
+            placeholder.classList.remove('hidden');
+            return;
+        }
+
+        previewEl.innerHTML = html;
+        previewEl.classList.remove('hidden');
+        placeholder.classList.add('hidden');
+    }
+
+    async function convertNow() {
+        const html = document.getElementById('html-input').value.trim();
+        if (!html) {
+            alert('الرجاء إدخال كود HTML أولاً');
+            return;
+        }
+
+        updateStatus('جاري التحويل...', 'bg-yellow-900 text-yellow-300 border-yellow-600');
+        showProgress(true);
+        setProgress(10);
+
+        try {
+            // Render HTML for measurement
+            updatePreview();
+            setProgress(30);
+
+            // Convert
+            const svg = await converter.convert(html, document.getElementById('render-container'));
+            currentSVG = svg;
+            setProgress(80);
+
+            // Update preview
+            const previewEl = document.getElementById('preview-content');
+
+            // Clear preview and show SVG
+            document.getElementById('preview-placeholder').classList.add('hidden');
+
+            // Parse SVG and display
+            const parser = new DOMParser();
+            const svgDoc = parser.parseFromString(svg, 'image/svg+xml');
+            const svgEl = svgDoc.querySelector('svg');
+
+            if (svgEl) {
+                // Scale SVG to fit preview
+                const maxWidth = document.getElementById('panel-preview').clientWidth - 48;
+                const vh = document.getElementById('panel-preview').clientHeight - 48;
+                const svgW = parseFloat(svgEl.getAttribute('width')) || 400;
+                const svgH = parseFloat(svgEl.getAttribute('height')) || 300;
+                const scale = Math.min(maxWidth / svgW, vh / svgH, 1);
+
+                svgEl.setAttribute('width', svgW * scale);
+                svgEl.setAttribute('height', svgH * scale);
+                svgEl.style.maxWidth = '100%';
+                svgEl.style.height = 'auto';
+
+                previewEl.innerHTML = '';
+                previewEl.appendChild(svgEl);
+                previewEl.classList.remove('hidden');
+                previewEl.style.display = 'inline-block';
+            }
+
+            // Update SVG code view
+            document.getElementById('svg-code').textContent = formatSVG(svg);
+
+            // Update layers view
+            updateLayersView(svg);
+
+            // Count layers
+            const layerCount = (svg.match(/<g id="/g) || []).length;
+            updateBadge(layerCount, `${svgW}×${svgH}`);
+
+            // Show action buttons
+            document.getElementById('btn-copy').classList.remove('hidden');
+            document.getElementById('btn-download').classList.remove('hidden');
+
+            setProgress(100);
+            updateStatus('تم التحويل ✅', 'bg-green-900 text-green-300 border-green-600');
+
+            // Switch to preview tab
+            switchTab('preview');
+
+        } catch (err) {
+            console.error(err);
+            updateStatus('خطأ: ' + err.message, 'bg-red-900 text-red-300 border-red-600');
+        } finally {
+            setTimeout(() => showProgress(false), 500);
+        }
+    }
+
+    function formatSVG(svg) {
+        // Simple formatting — add proper indentation
+        return svg
+            .replace(/></g, '>\n<')
+            .replace(/\n\n+/g, '\n')
+            .trim();
+    }
+
+    function updateLayersView(svg) {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(svg, 'image/svg+xml');
+        const groups = doc.querySelectorAll('svg > g, svg g g');
+
+        let html = '<div class="space-y-1 text-xs">';
+        html += buildLayerTree(doc.querySelector('svg'), 0);
+        html += '</div>';
+
+        document.getElementById('layers-tree').innerHTML = html;
+    }
+
+    function buildLayerTree(element, depth) {
+        let html = '';
+        const indent = depth * 16;
+        const children = Array.from(element.children);
+
+        for (const child of children) {
+            if (child.tagName === 'defs') continue;
+            if (child.tagName === 'rect' && child.getAttribute('fill') === 'transparent') continue;
+
+            const id = child.getAttribute('id') || '';
+            const type = child.getAttribute('data-type') || child.tagName;
+            const isGroup = child.tagName === 'g';
+
+            if (isGroup) {
+                const icon = type === 'Frame' ? '▣' : '◈';
+                html += `<div style="padding-right: ${indent}px;" class="flex items-center gap-1 py-0.5 px-2 rounded hover:bg-slate-800 cursor-pointer">
+                    <span class="text-indigo-400">${icon}</span>
+                    <span class="text-slate-200">${id || type}</span>
+                    <span class="layer-badge mr-auto">${type}</span>
+                </div>`;
+                html += buildLayerTree(child, depth + 1);
+            } else {
+                const icon = child.tagName === 'text' ? 'T' :
+                             child.tagName === 'image' ? '🖼' :
+                             child.tagName === 'path' ? '⬡' : '▪';
+                html += `<div style="padding-right: ${indent + 16}px;" class="flex items-center gap-1 py-0.5 px-2 rounded hover:bg-slate-800 text-slate-400">
+                    <span>${icon}</span>
+                    <span>${child.tagName}${id ? ': ' + id : ''}</span>
+                </div>`;
+            }
+        }
+
+        return html;
+    }
+
+    function switchTab(tab) {
+        currentTab = tab;
+        document.getElementById('panel-preview').classList.toggle('hidden', tab !== 'preview');
+        document.getElementById('panel-svg').classList.toggle('hidden', tab !== 'svg');
+        document.getElementById('panel-layers').classList.toggle('hidden', tab !== 'layers');
+
+        document.getElementById('tab-preview').className = tab === 'preview' ? 'tab-active px-3 py-1 rounded text-xs font-semibold transition' : 'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
+        document.getElementById('tab-svg').className = tab === 'svg' ? 'tab-active px-3 py-1 rounded text-xs font-semibold transition' : 'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
+        document.getElementById('tab-layers').className = tab === 'layers' ? 'tab-active px-3 py-1 rounded text-xs font-semibold transition' : 'tab-inactive px-3 py-1 rounded text-xs font-semibold transition';
+    }
+
+    function copySVG() {
+        if (!currentSVG) return;
+        navigator.clipboard.writeText(currentSVG).then(() => {
+            const btn = document.getElementById('btn-copy');
+            const originalHTML = btn.innerHTML;
+            btn.innerHTML = '✅ تم النسخ';
+            setTimeout(() => btn.innerHTML = originalHTML, 2000);
+        });
+    }
+
+    function downloadSVG() {
+        if (!currentSVG) return;
+        const blob = new Blob([currentSVG], { type: 'image/svg+xml' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'figma-design.svg';
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    function updateStatus(text, classes) {
+        const pill = document.getElementById('status-pill');
+        pill.textContent = text;
+        pill.className = `status-pill text-xs px-3 py-1 rounded-full border ${classes}`;
+    }
+
+    function updateBadge(layers, size) {
+        document.getElementById('layer-count').textContent = `${layers} طبقة`;
+        document.getElementById('size-badge').textContent = size;
+    }
+
+    function showProgress(show) {
+        document.getElementById('progress-bar').classList.toggle('hidden', !show);
+    }
+
+    function setProgress(pct) {
+        document.getElementById('progress-fill').style.width = pct + '%';
+    }
+
+    // Auto-update preview on input (debounced)
+    let previewTimeout;
+    document.getElementById('html-input').addEventListener('input', () => {
+        clearTimeout(previewTimeout);
+        previewTimeout = setTimeout(updatePreview, 300);
+    });
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+            e.preventDefault();
+            convertNow();
+        }
+    });
+
+    // Load sample on start
+    window.addEventListener('load', () => {
+        loadSample();
+    });
+    </script>
+</body>
+</html>
